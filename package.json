@@ -1,0 +1,29 @@
+{
+  "name": "mylauncher",
+  "version": "1.0.0",
+  "description": "Lean Client - Custom Minecraft Launcher",
+  "main": "main.js",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "electron .",
+    "electron": "electron .",
+    "build": "tauri build"
+  },
+  "keywords": [],
+  "author": "Lyam",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@xhayper/discord-rpc": "^1.3.3",
+    "adm-zip": "^0.5.17",
+    "archiver": "^7.0.1",
+    "dotenv": "^17.4.2",
+    "minecraft-launcher-core": "^3.18.2",
+    "msmc": "^5.0.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "electron": "^26.0.0"
+  }
+}
