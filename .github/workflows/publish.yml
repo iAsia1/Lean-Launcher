@@ -10,6 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
+      fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +18,16 @@ jobs:
         with:
           node-version: 20
 
+      - name: Remove large folders not needed for build
+        run: |
+          rm -rf mod-profiles
+          rm -rf minecraft
+          rm -rf dist
+          rm -f forge-*.jar forge-*.log
+
       - run: npm install
 
-      # The --publish=always flag will push to GitHub Releases automatically
-      - run: npx electron-builder --publish=always
+      - name: Build and publish to GitHub Releases
+        run: npx electron-builder --publish=always
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
