@@ -9,7 +9,7 @@
     "build": "electron-builder"
   },
   "keywords": [],
-  "author": "Lyam",
+  "author": "Lyam <lyam@leanlauncher.dev>",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

@@ -19,6 +19,7 @@ jobs:
           node-version: 20
 
       - name: Remove large folders not needed for build
+        shell: bash
         run: |
           rm -rf mod-profiles
           rm -rf minecraft
