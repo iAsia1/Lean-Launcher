@@ -3,7 +3,9 @@ try {
     const electron = require('electron');
     ipcRenderer = electron.ipcRenderer;
     electronAvailable = Boolean(ipcRenderer && ipcRenderer.invoke);
+    console.log('[LeanLauncher] Electron detected, ipcRenderer.invoke available:', electronAvailable);
 } catch (e) {
+    console.error('[LeanLauncher] Failed to load electron:', e.message || e);
     electronAvailable = false;
 }
 
@@ -1668,7 +1670,11 @@ async function initUI() {
     });
 
     launchGroup?.addEventListener('click', async (e) => {
-        if (!isSignedIn || e.target.closest('#version-select') || e.target.closest('#launch-profile-select')) return;
+        console.log('[LeanLauncher] Launch clicked, isSignedIn:', isSignedIn, 'electronAvailable:', electronAvailable);
+        if (!isSignedIn || e.target.closest('#version-select') || e.target.closest('#launch-profile-select')) {
+            console.log('[LeanLauncher] Launch blocked: isSignedIn=', isSignedIn, 'targetSelect=', Boolean(e.target.closest('#version-select') || e.target.closest('#launch-profile-select')));
+            return;
+        }
         const v = versionSelect?.value;
         if (!v) return;
 
@@ -1748,8 +1754,10 @@ async function initUI() {
     });
     document.getElementById('login-cracked-confirm')?.addEventListener('click', async () => {
         const name = crackedInput.value.replace(/\s+/g, '').trim();
+        console.log('[LeanLauncher] Cracked sign-in clicked, name:', name, 'electronAvailable:', electronAvailable);
         if (!name || !electronAvailable) return;
         const res = await ipcRenderer.invoke('login-offline', name);
+        console.log('[LeanLauncher] login-offline response:', res);
         if (res?.success) {
             const state = await refreshAuthAccounts();
             syncActiveAccountDisplay(state, res.result.name, null);

@@ -34,29 +34,55 @@ const authTokenData = {
     prompt: 'select_account'
 };
 const authManager = new Auth(authTokenData);
-const AUTH_CACHE_PATH = path.join(__dirname, 'auth-cache.json');
-const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 const DEFAULT_AUTH_STATE = { activeAccountId: null, accounts: [] };
 
 // Determine data directory: use writable userData when packaged, __dirname in dev
 const electronApp = (() => { try { return require('electron').app; } catch { return null; } })();
-const DATA_ROOT = electronApp ? electronApp.getPath('userData') : __dirname;
+const IS_PACKAGED = electronApp ? electronApp.isPackaged : false;
+const DATA_ROOT = IS_PACKAGED ? electronApp.getPath('userData') : __dirname;
 
-// Minecraft root: prefer existing minecraft/ next to the app (dev mode), otherwise userData (packaged)
-const MC_ROOT = fs.existsSync(path.join(__dirname, 'minecraft', 'versions'))
-    ? path.join(__dirname, 'minecraft')
-    : path.join(DATA_ROOT, 'minecraft');
+// Minecraft root: writable userData when packaged, __dirname in dev
+const MC_ROOT = IS_PACKAGED
+    ? path.join(DATA_ROOT, 'minecraft')
+    : path.join(__dirname, 'minecraft');
 
 const AUTH_CACHE_PATH = path.join(DATA_ROOT, 'auth-cache.json');
 const SETTINGS_PATH = path.join(DATA_ROOT, 'settings.json');
 const MOD_PROFILE_ROOT = path.join(__dirname, 'mod-profiles');
 
-let cancelRequested = false;
-let cancelInterval = null;
-let instanceStartTimes = {}; 
+// When packaged, seed the writable MC_ROOT with essential files from the bundled (read-only) app
+if (IS_PACKAGED) {
+    const BUNDLED_MC = path.join(__dirname, 'minecraft');
+    const dirsToSeed = ['versions', 'assets/indexes'];
+    for (const rel of dirsToSeed) {
+        const src = path.join(BUNDLED_MC, rel);
+        const dest = path.join(MC_ROOT, rel);
+        if (fs.existsSync(src) && !fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+            for (const entry of fs.readdirSync(src)) {
+                const srcPath = path.join(src, entry);
+                const destPath = path.join(dest, entry);
+                if (fs.statSync(srcPath).isFile()) fs.copyFileSync(srcPath, destPath);
+            }
+        }
+    }
+    // Copy log4j configs
+    for (const name of ['log4j2_112-116.xml', 'log4j2_17-111.xml']) {
+        const src = path.join(BUNDLED_MC, name);
+        const dest = path.join(MC_ROOT, name);
+        if (fs.existsSync(src) && !fs.existsSync(dest)) fs.copyFileSync(src, dest);
+    }
+    // Copy launcher_profiles.json if present
+    const lpSrc = path.join(BUNDLED_MC, 'launcher_profiles.json');
+    const lpDest = path.join(MC_ROOT, 'launcher_profiles.json');
+    if (fs.existsSync(lpSrc) && !fs.existsSync(lpDest)) fs.copyFileSync(lpSrc, lpDest);
+}
 
 const OFFICIAL_LEAN_BASE_VERSIONS = new Set(['1.21.11', '1.21.7', '1.21.4', '1.20', '1.19.4']);
-const MOD_PROFILE_ROOT = path.join(__dirname, 'mod-profiles');
+
+let cancelRequested = false;
+let cancelInterval = null;
+let instanceStartTimes = {};
 
 function getDefaultProfilesForBaseVersion(baseVersion) {
     if (baseVersion === '1.19.4') return ['full'];

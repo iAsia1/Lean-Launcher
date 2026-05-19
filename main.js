@@ -8,9 +8,11 @@ let mainWindow = null;
 
 // Resolve the writable minecraft instance root (packaged: userData, dev: __dirname)
 function resolveMcRoot() {
-    const devPath = path.join(__dirname, 'minecraft');
-    if (fs.existsSync(path.join(devPath, 'versions'))) return devPath;
-    return path.join(app.getPath('userData'), 'minecraft');
+    const mcPath = app.isPackaged
+        ? path.join(app.getPath('userData'), 'minecraft')
+        : path.join(__dirname, 'minecraft');
+    if (!fs.existsSync(mcPath)) fs.mkdirSync(mcPath, { recursive: true });
+    return mcPath;
 }
 
 function resolveInstancePath(version, relPath = '') {
