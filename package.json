@@ -1,5 +1,5 @@
 {
-  "name": "mylauncher",
+  "name": "lean-launcher",
   "version": "1.0.1",
   "description": "Lean Client - Custom Minecraft Launcher",
   "main": "main.js",
@@ -29,7 +29,9 @@
       "output": "dist"
     },
     "publish": {
-      "provider": "github"
+      "provider": "github",
+      "owner": "Lyam999gh",
+      "repo": "Lean-Launcher"
     },
     "win": {
       "target": "nsis",
