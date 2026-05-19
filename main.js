@@ -81,7 +81,7 @@ autoUpdater.on('update-downloaded', () => {
   dialog.showMessageBox({
     type: 'info',
     title: 'Update Ready',
-    message: 'A new version of Lean Client has been downloaded. Restart now to install it?',
+    message: 'A new version of Lean Launcher has been downloaded. Restart now to install it?',
     buttons: ['Restart', 'Later']
   }).then(({ response }) => {
     if (response === 0) {

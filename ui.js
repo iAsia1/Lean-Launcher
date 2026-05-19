@@ -40,7 +40,7 @@ const PROFILE_ORDER = ['lightweight', 'balanced', 'full'];
 const userSection = document.getElementById('user-section'), playerHead = document.getElementById('player-head'), usernameEl = document.getElementById('player-name'), leanDesc = document.getElementById('leanDesc');
 const btnHome = document.getElementById('btn-home'), btnAbout = document.getElementById('btn-about'), btnInstances = document.getElementById('btn-instances'), btnSettings = document.getElementById('btn-settings'), homeView = document.getElementById('home-view'), aboutView = document.getElementById('about-view'), instancesView = document.getElementById('instances-view'), createVersionView = document.getElementById('create-version-view'), settingsView = document.getElementById('settings-view');
 
-const globTheme = document.getElementById('global-theme'), globLang = document.getElementById('global-language'), globRpc = document.getElementById('global-rpc'), globCloseOnBoot = document.getElementById('global-close-on-boot');
+const globTheme = document.getElementById('global-theme'), globLang = document.getElementById('global-language'), globCloseOnBoot = document.getElementById('global-close-on-boot');
 const setInstanceSelect = document.getElementById('settings-instance-select'), setRam = document.getElementById('set-ram'), setRamSlider = document.getElementById('set-ram-slider'), ramRemainingText = document.getElementById('ram-remaining-text'), setPreset = document.getElementById('set-preset'), setJvm = document.getElementById('set-jvm'), setJavaPath = document.getElementById('set-javapath');
 const toggleAdvancedBtn = document.getElementById('toggle-advanced'), advancedPanel = document.getElementById('advanced-settings-panel'), customArgsContainer = document.getElementById('custom-args-container'), playtimeText = document.getElementById('playtime-text'), playtimeTotalText = document.getElementById('playtime-text-total');
 const cancelLaunchButton = document.getElementById('cancel-launch');
@@ -77,14 +77,14 @@ const i18n = {
         manageAccounts: "Manage Accounts", manageTitle: "Manage Accounts", manageDesc: "All saved accounts are listed below.",
         activeAccount: "Active", removeAccount: "Remove", noAccounts: "No saved Microsoft accounts yet.",
         login: "Log In", back: "Back", pref: "Preferences", lSet: "Launcher Settings",
-        theme: "Theme", lang: "Language", rpc: "Discord Rich Presence", closeOnBoot: "Close Launcher On Boot", iSet: "Instance Settings",
+        theme: "Theme", lang: "Language", closeOnBoot: "Close Launcher On Boot", iSet: "Instance Settings",
         config: "Configuring:", play: "Playtime:", ram: "Allocated RAM", ramSub: "Amount of memory for this version.",
         adv: "Show Advanced Options ▼", advHide: "Hide Advanced Options ▲",
         jvm: "JVM Preset", jvmSub: "Garbage collection logic.", java: "Custom Java Path", javaSub: "Leave blank to use bundled Java.",
-        aboutWhatLean: "What is Lean Client?",
-        aboutWhatLeanText: "Lean Client is a highly optimized selection of mods for Minecraft Java Edition, played using the Lean Client Launcher. It provides essential performance improvements while maintaining the vanilla feel of the game.",
+        aboutWhatLean: "What is Lean Launcher?",
+        aboutWhatLeanText: "Lean Launcher is a highly optimized launcher for Minecraft Java Edition. It provides essential performance improvements while maintaining the vanilla feel of the game.",
         aboutWhatOld: "What is \"Lean Client Old\"?",
-        aboutWhatOldText: "Lean Client Old is the first versions of Lean Client that I ever made. they use regular mods that are put into the instance. They are essentially modpacks.",
+        aboutWhatOldText: "Lean Client Old is the first official version line of the project. These builds use regular mods that are placed into the instance. They are essentially modpacks.",
         aboutUploadTitle: "How can I upload my own version to use?",
         aboutUploadText: "To bring your own custom instance and files into the launcher, go to the Instances tab, click \"Create New Version,\" then set Instance Name, Version, Mod Loader, and Accent. After saving, click Edit Files, then Upload Files. Once the files window opens, choose the folder you want to place files into, or drag and drop files/folders directly.",
         status_start: "Press LAUNCH to start."
@@ -97,14 +97,14 @@ const i18n = {
         manageAccounts: "Administrar Cuentas", manageTitle: "Administrar Cuentas", manageDesc: "Todas las cuentas guardadas aparecen abajo.",
         activeAccount: "Activa", removeAccount: "Eliminar", noAccounts: "Todavía no hay cuentas de Microsoft guardadas.",
         login: "Entrar", back: "Volver", pref: "Preferencias", lSet: "Ajustes del Launcher",
-        theme: "Tema", lang: "Idioma", rpc: "Presencia en Discord", closeOnBoot: "Cerrar launcher al iniciar", iSet: "Ajustes de Instancia",
+        theme: "Tema", lang: "Idioma", closeOnBoot: "Cerrar launcher al iniciar", iSet: "Ajustes de Instancia",
         config: "Configurando:", play: "Tiempo de juego:", ram: "RAM Alocada", ramSub: "Cantidad de memoria para esta versión.",
         adv: "Mostrar Avanzadas ▼", advHide: "Ocultar Avanzadas ▲",
         jvm: "Ajuste JVM", jvmSub: "Lógica de coleta de lixo.", java: "Ruta de Java", javaSub: "Deixe em branco para usar o Java embutido.",
-        aboutWhatLean: "¿Qué es Lean Client?",
-        aboutWhatLeanText: "Lean Client es una selección de mods altamente optimizada para Minecraft Java Edition, jugada usando o Lean Client Launcher. Ele oferece melhorias essenciais de desempenho mantendo a sensação vanilla do jogo.",
+        aboutWhatLean: "¿Qué es Lean Launcher?",
+        aboutWhatLeanText: "Lean Launcher es una selección de mods altamente optimizada para Minecraft Java Edition. Ofrece mejoras esenciales de rendimiento mientras mantiene la sensación vanilla del juego.",
         aboutWhatOld: "¿Qué es \"Lean Client Old\"?",
-        aboutWhatOldText: "Lean Client Old son las primeras versiones del Lean Client que hice. Usan mods normales colocados dentro de la instancia. Básicamente son modpacks.",
+        aboutWhatOldText: "Lean Client Old es la primera línea oficial de versiones del proyecto. Estas compilaciones usan mods normales colocados dentro de la instancia. Básicamente son modpacks.",
         aboutUploadTitle: "¿Cómo puedo subir mi propia versión para usarla?",
         aboutUploadText: "Ve a Instâncias y haz clic en + Create new version para crear tu propia versión. Elige un nombre, versión base y tipo de loader, luego guarda. No card da sua versão personalizada, haz clic en Edit Files para abrir o painel editor de arquivos. De lá, use Upload Files para añadir tus mods, configs y recursos na pasta dessa instância. Você também pode abrir arquivos existentes na árvore para editar e salvar diretamente no launcher.",
         status_start: "Presione JUGAR para comenzar."
@@ -117,14 +117,14 @@ const i18n = {
         manageAccounts: "Gerenciar Contas", manageTitle: "Gerenciar Contas", manageDesc: "Todas as contas salvas aparecem abaixo.",
         activeAccount: "Ativa", removeAccount: "Remover", noAccounts: "Ainda não há contas Microsoft salvas.",
         login: "Entrar", back: "Voltar", pref: "Preferências", lSet: "Config. do Launcher",
-        theme: "Tema", lang: "Idioma", rpc: "Presença no Discord", closeOnBoot: "Fechar launcher ao iniciar", iSet: "Config. da Instância",
+        theme: "Tema", lang: "Idioma", closeOnBoot: "Fechar launcher ao iniciar", iSet: "Config. da Instância",
         config: "Configurando:", play: "Tempo de jogo:", ram: "RAM Alocada", ramSub: "Quantidade de memória para esta versão.",
         adv: "Mostrar Avançadas ▼", advHide: "Ocultar Avançadas ▲",
         jvm: "Ajuste JVM", jvmSub: "Lógica de coleta de lixo.", java: "Caminho do Java", javaSub: "Deixe em branco para usar o Java embutido.",
-        aboutWhatLean: "O que é Lean Client?",
-        aboutWhatLeanText: "Lean Client é uma seleção de mods altamente otimizada para Minecraft Java Edition, jogada usando o Lean Client Launcher. Ele oferece melhorias essenciais de desempenho mantendo a sensação vanilla do jogo.",
+        aboutWhatLean: "O que é Lean Launcher?",
+        aboutWhatLeanText: "Lean Launcher é uma seleção de mods altamente otimizada para Minecraft Java Edition. Ele oferece melhorias essenciais de desempenho mantendo a sensação vanilla do jogo.",
         aboutWhatOld: "O que é \"Lean Client Old\"?",
-        aboutWhatOldText: "Lean Client Old são as primeiras versões do Lean Client que eu fiz. Elas usam mods normais colocados dentro da instância. São basicamente modpacks.",
+        aboutWhatOldText: "Lean Client Old é a primeira linha oficial de versões do projeto. Essas compilações usam mods normais colocados dentro da instância. São basicamente modpacks.",
         aboutUploadTitle: "Como posso enviar minha própria versão para usar?",
         aboutUploadText: "Vá em Instâncias e clique em + Create new version para criar sua própria versão. Escolha um nome, versão base e tipo de loader, depois salve. No card da sua versão personalizada, clique em Edit Files para abrir o painel editor de arquivos. De lá, use Upload Files para adicionar seus mods, configs e recursos na pasta dessa instância. Você também pode abrir arquivos existentes na árvore para editar e salvar diretamente no launcher.",
         status_start: "Pressione JOGAR para começar."
@@ -150,7 +150,6 @@ async function loadGlobalSettings() {
     globTheme.dispatchEvent(new Event('change'));
     globLang.value = g.language || 'en';
     globLang.dispatchEvent(new Event('change'));
-    globRpc.checked = g.rpc || false;
     if (globCloseOnBoot) globCloseOnBoot.checked = Boolean(g.closeOnBoot);
     document.documentElement.setAttribute('data-theme', globTheme.value);
     applyTranslations();
@@ -161,7 +160,6 @@ function saveGlobalSettings() {
     const g = {
         theme: globTheme.value,
         language: globLang.value,
-        rpc: globRpc.checked,
         closeOnBoot: Boolean(globCloseOnBoot?.checked)
     };
     document.documentElement.setAttribute('data-theme', g.theme);
@@ -817,7 +815,6 @@ async function initUI() {
 
     globTheme.addEventListener('change', saveGlobalSettings);
     globLang.addEventListener('change', saveGlobalSettings);
-    globRpc.addEventListener('change', saveGlobalSettings);
     globCloseOnBoot?.addEventListener('change', saveGlobalSettings);
     
     setInstanceSelect.addEventListener('change', loadInstanceSettings);

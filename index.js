@@ -38,10 +38,6 @@ const AUTH_CACHE_PATH = path.join(__dirname, 'auth-cache.json');
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 const DEFAULT_AUTH_STATE = { activeAccountId: null, accounts: [] };
 
-const DiscordRPC = require('@xhayper/discord-rpc');
-const rpcClient = new DiscordRPC.Client({ transport: 'ipc' });
-const DISCORD_APP_ID = "1494576003723432086";
-
 let cancelRequested = false;
 let cancelInterval = null;
 let instanceStartTimes = {}; 
@@ -238,7 +234,6 @@ function getGlobalSettings() {
     return {
         theme: globalSettings.theme || "light",
         language: globalSettings.language || "en",
-        rpc: Boolean(globalSettings.rpc),
         closeOnBoot: Boolean(globalSettings.closeOnBoot)
     };
 }
@@ -633,8 +628,7 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     const selectedVersion = typeof options === 'string' ? options : options.version;
     const selectedProfile = typeof options === 'object' && options ? options.activeProfile : null;
     const requestedAccountId = typeof options === 'object' && options ? options.accountId : null;
-    const isRpcEnabled = getGlobalSettings().rpc;
-    console.log(`--- Lean Client Engine Starting for ${selectedVersion} ---`);
+    console.log(`--- Lean Launcher Engine Starting for ${selectedVersion} ---`);
     cancelRequested = false;
 
     if (launcher) {
@@ -835,7 +829,6 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     launcher.removeAllListeners('error');
     launcher.on('error', (error) => {
         clearInterval(cancelInterval);
-        if (isRpcEnabled) rpcClient.user?.clearActivity();
         emitCrashReport(error?.message || 'Minecraft crashed during launch.');
     });
     
@@ -843,7 +836,6 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     launcher.removeAllListeners('close');
     launcher.on('close', (code, signal) => {
         clearInterval(cancelInterval);
-        if (isRpcEnabled) rpcClient.user?.clearActivity();
         if (instanceStartTimes[selectedVersion]) {
             const playedMs = Date.now() - instanceStartTimes[selectedVersion];
             const allSettings = loadSettings();
@@ -871,16 +863,6 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
             });
         }
     });
-
-    if (isRpcEnabled) {
-        rpcClient.login({ clientId: DISCORD_APP_ID }).then(() => {
-            rpcClient.user?.setActivity({
-                details: `Playing Minecraft ${selectedVersion}`,
-                state: `On Lean Client`,
-                startTimestamp: Date.now()
-            });
-        }).catch(console.error);
-    }
 
     launcher.launch(opts);
     return { launched: true };
