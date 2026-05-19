@@ -1,6 +1,6 @@
 {
   "name": "mylauncher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lean Client - Custom Minecraft Launcher",
   "main": "main.js",
   "scripts": {
