@@ -1,5 +1,11 @@
 let ipcRenderer = null, electronAvailable = false;
-try { const electron = window.require?.('electron') || null; ipcRenderer = electron?.ipcRenderer || null; electronAvailable = Boolean(ipcRenderer?.invoke); } catch { electronAvailable = false; }
+try {
+    const electron = require('electron');
+    ipcRenderer = electron.ipcRenderer;
+    electronAvailable = Boolean(ipcRenderer && ipcRenderer.invoke);
+} catch (e) {
+    electronAvailable = false;
+}
 
 const { normalizeRamMb, clampRamForSlider, applySoftRamSnap, normalizeRamGb, gbToMb, mbToGb, formatRamGb } = require('./lib/ram-utils.js');
 
@@ -1681,7 +1687,13 @@ async function initUI() {
         statusVersion.textContent = selectedProfile ? `${v} (${formatProfileName(selectedProfile)})` : v;
         setStatus(`Preparing ${v}${selectedProfile ? ` (${formatProfileName(selectedProfile)})` : ''}...`, 0);
         const activeAccountId = authAccountsState?.activeAccountId || null;
-        if (electronAvailable) await ipcRenderer.invoke('launch-game', { version: v, activeProfile: selectedProfile, accountId: activeAccountId });
+        if (electronAvailable) {
+            const res = await ipcRenderer.invoke('launch-game', { version: v, activeProfile: selectedProfile, accountId: activeAccountId });
+            if (!res?.success) {
+                setStatus(res?.error || 'Launch failed for an unknown reason.', 0);
+                setTimeout(() => statusBar.classList.remove('visible'), 5000);
+            }
+        }
     });
 
     cancelLaunchButton?.addEventListener('click', async () => {
