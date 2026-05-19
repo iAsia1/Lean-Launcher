@@ -1,8 +1,7 @@
 let ipcRenderer = null, electronAvailable = false;
 try { const electron = window.require?.('electron') || null; ipcRenderer = electron?.ipcRenderer || null; electronAvailable = Boolean(ipcRenderer?.invoke); } catch { electronAvailable = false; }
 
-// --- Imports ---
-import { normalizeRamMb, clampRamForSlider, applySoftRamSnap, normalizeRamGb, gbToMb, mbToGb, formatRamGb } from './lib/ram-utils.js';
+const { normalizeRamMb, clampRamForSlider, applySoftRamSnap, normalizeRamGb, gbToMb, mbToGb, formatRamGb } = require('./lib/ram-utils.js');
 
 // --- Debounce Utility ---
 function debounce(fn, delayMs = 300) {
