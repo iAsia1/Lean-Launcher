@@ -1,6 +1,6 @@
 {
   "name": "lean-launcher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lean Launcher first release",
   "main": "main.js",
   "scripts": {
@@ -37,7 +37,11 @@
       "icon": "icon.ico"
     },
     "linux": {
-      "target": ["deb", "AppImage", "dir"],
+      "target": [
+        "deb",
+        "AppImage",
+        "dir"
+      ],
       "icon": "icon.png",
       "category": "Game"
     },
