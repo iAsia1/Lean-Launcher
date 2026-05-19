@@ -1,3 +1,0 @@
-#Configuration file for ScalableLux
-#Mon Apr 27 20:53:55 MDT 2026
-use_starlight_format=false

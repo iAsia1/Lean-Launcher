@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { loginAccount, getAuthAccounts, setActiveAuthAccount, removeAuthAccount } = require('./index.js');
+const { autoUpdater } = require('electron-updater');
 let mainWindow = null;
 
 function copyDirectoryContentsRecursive(sourceDir, targetDir) {
@@ -31,10 +32,12 @@ function copyDirectoryContentsRecursive(sourceDir, targetDir) {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, 'icon.png');
   const win = new BrowserWindow({
     width: 950, height: 700,
     minWidth: 900, minHeight: 650,
     frame: false,
+    icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
@@ -60,6 +63,31 @@ function showOrCreateMainWindow() {
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+  // Auto-updater — checks GitHub Releases on launch + every 4 hours
+  autoUpdater.checkForUpdatesAndNotify();
+  setInterval(() => autoUpdater.checkForUpdatesAndNotify(), 4 * 60 * 60 * 1000);
+});
+
+// Notify renderer of update download progress
+autoUpdater.on('download-progress', (progress) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-progress', progress.percent);
+  }
+});
+
+// Update downloaded — prompt user to restart
+autoUpdater.on('update-downloaded', () => {
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version of Lean Client has been downloaded. Restart now to install it?',
+    buttons: ['Restart', 'Later']
+  }).then(({ response }) => {
+    if (response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
@@ -125,6 +153,13 @@ ipcMain.handle('get-all-settings', () => require('./index.js').loadSettings());
 ipcMain.handle('get-system-memory', () => {
   const totalBytes = os.totalmem();
   return { totalMb: Math.round(totalBytes / (1024 * 1024)) };
+});
+
+ipcMain.handle('validate-java-path', (_, javaPath) => {
+  if (!javaPath || typeof javaPath !== 'string') return { valid: false, error: 'No path provided.' };
+  if (!fs.existsSync(javaPath))
+    return { valid: false, error: `Java executable not found at:\n${javaPath}` };
+  return { valid: true };
 });
 
 ipcMain.handle('open-instance-folder', async (_, version) => {

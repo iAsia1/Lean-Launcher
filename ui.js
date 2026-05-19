@@ -1,6 +1,35 @@
 let ipcRenderer = null, electronAvailable = false;
 try { const electron = window.require?.('electron') || null; ipcRenderer = electron?.ipcRenderer || null; electronAvailable = Boolean(ipcRenderer?.invoke); } catch { electronAvailable = false; }
 
+// --- Imports ---
+import { normalizeRamMb, clampRamForSlider, applySoftRamSnap, normalizeRamGb, gbToMb, mbToGb, formatRamGb } from './lib/ram-utils.js';
+
+// --- Debounce Utility ---
+function debounce(fn, delayMs = 300) {
+    let timer = null;
+    const debounced = function (...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            timer = null;
+            fn.apply(this, args);
+        }, delayMs);
+    };
+    debounced.flush = function () {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+            fn();
+        }
+    };
+    debounced.cancel = function () {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+    };
+    return debounced;
+}
+
 // --- DOM Elements ---
 const layer = document.getElementById('bubbleLayer');
 const launchGroup = document.querySelector('.launch-group'), statusBar = document.querySelector('.launch-status-bar'), statusText = document.getElementById('status-text'), statusProgress = document.getElementById('status-progress'), statusVersion = document.getElementById('status-version');
@@ -70,16 +99,16 @@ const i18n = {
         activeAccount: "Activa", removeAccount: "Eliminar", noAccounts: "Todavía no hay cuentas de Microsoft guardadas.",
         login: "Entrar", back: "Volver", pref: "Preferencias", lSet: "Ajustes del Launcher",
         theme: "Tema", lang: "Idioma", rpc: "Presencia en Discord", closeOnBoot: "Cerrar launcher al iniciar", iSet: "Ajustes de Instancia",
-        config: "Configurando:", play: "Tiempo de juego:", ram: "RAM Asignada", ramSub: "Cantidad de memoria para esta versión.",
+        config: "Configurando:", play: "Tiempo de juego:", ram: "RAM Alocada", ramSub: "Cantidad de memoria para esta versión.",
         adv: "Mostrar Avanzadas ▼", advHide: "Ocultar Avanzadas ▲",
-        jvm: "Ajuste JVM", jvmSub: "Lógica de recolección de basura.", java: "Ruta de Java", javaSub: "Dejar en blanco para usar Java incluido.",
+        jvm: "Ajuste JVM", jvmSub: "Lógica de coleta de lixo.", java: "Ruta de Java", javaSub: "Deixe em branco para usar o Java embutido.",
         aboutWhatLean: "¿Qué es Lean Client?",
-        aboutWhatLeanText: "Lean Client es una selección de mods altamente optimizada para Minecraft Java Edition, jugada usando el Lean Client Launcher. Proporciona mejoras esenciales de rendimiento manteniendo la sensación vanilla del juego.",
+        aboutWhatLeanText: "Lean Client es una selección de mods altamente optimizada para Minecraft Java Edition, jugada usando o Lean Client Launcher. Ele oferece melhorias essenciais de desempenho mantendo a sensação vanilla do jogo.",
         aboutWhatOld: "¿Qué es \"Lean Client Old\"?",
-        aboutWhatOldText: "Lean Client Old son las primeras versiones de Lean Client que hice. Usan mods normales colocados dentro de la instancia. Básicamente son modpacks.",
+        aboutWhatOldText: "Lean Client Old son las primeras versiones del Lean Client que hice. Usan mods normales colocados dentro de la instancia. Básicamente son modpacks.",
         aboutUploadTitle: "¿Cómo puedo subir mi propia versión para usarla?",
-        aboutUploadText: "Ve a Instancias y haz clic en + Create new version para crear tu propia versión. Elige un nombre, versión base y tipo de loader, luego guarda. En la tarjeta de tu versión personalizada, haz clic en Edit Files para abrir el panel editor de archivos. Desde ahí, usa Upload Files para añadir tus mods, configs y recursos a la carpeta de esa instancia. También puedes abrir archivos existentes desde el árbol para editarlos y guardarlos directamente en el launcher.",
-        status_start: "Presiona JUGAR para comenzar."
+        aboutUploadText: "Ve a Instâncias y haz clic en + Create new version para crear tu propia versión. Elige un nombre, versión base y tipo de loader, luego guarda. No card da sua versão personalizada, haz clic en Edit Files para abrir o painel editor de arquivos. De lá, use Upload Files para añadir tus mods, configs y recursos na pasta dessa instância. Você também pode abrir arquivos existentes na árvore para editar e salvar diretamente no launcher.",
+        status_start: "Presione JUGAR para comenzar."
     },
     pt: {
         home: "Início", about: "Sobre", instances: "Instâncias", settings: "Config.", launch: "JOGAR", cancel: "Cancelar", selectVer: "Selecionar versão",
@@ -119,10 +148,12 @@ async function loadGlobalSettings() {
     if (!electronAvailable) return;
     const g = await ipcRenderer.invoke('get-global-settings');
     globTheme.value = g.theme || 'light';
+    globTheme.dispatchEvent(new Event('change'));
     globLang.value = g.language || 'en';
+    globLang.dispatchEvent(new Event('change'));
     globRpc.checked = g.rpc || false;
     if (globCloseOnBoot) globCloseOnBoot.checked = Boolean(g.closeOnBoot);
-    document.body.setAttribute('data-theme', globTheme.value);
+    document.documentElement.setAttribute('data-theme', globTheme.value);
     applyTranslations();
 }
 
@@ -134,7 +165,7 @@ function saveGlobalSettings() {
         rpc: globRpc.checked,
         closeOnBoot: Boolean(globCloseOnBoot?.checked)
     };
-    document.body.setAttribute('data-theme', g.theme);
+    document.documentElement.setAttribute('data-theme', g.theme);
     applyTranslations();
     ipcRenderer.invoke('save-global-settings', g);
 }
@@ -142,29 +173,93 @@ function saveGlobalSettings() {
 function formatCrashReport(report) {
     if (!report || typeof report !== 'object') return 'No details were provided.';
 
-    const lines = [];
+    const sections = [];
     const when = report.timestamp ? new Date(report.timestamp).toLocaleString() : 'Unknown time';
-    lines.push(`Time: ${when}`);
-    if (report.version) lines.push(`Version: ${report.version}`);
-    if (report.profile) lines.push(`Profile: ${report.profile}`);
-    if (typeof report.code === 'number') lines.push(`Exit Code: ${report.code}`);
-    if (report.signal) lines.push(`Signal: ${report.signal}`);
 
-    if (report.crashReportFile) lines.push(`Crash Report File: ${report.crashReportFile}`);
+    // ---- Summary ----
+    sections.push('═══════════════════════════════════');
+    sections.push('  CRASH SUMMARY');
+    sections.push('═══════════════════════════════════');
+    sections.push(`  Time     : ${when}`);
+    if (report.version) sections.push(`  Version  : ${report.version}`);
+    if (report.profile) sections.push(`  Profile  : ${report.profile}`);
+    if (typeof report.code === 'number' || report.signal) {
+        sections.push(`  Exit     : code=${report.code ?? '?'}  signal=${report.signal || 'none'}`);
+    }
+    if (report.message) sections.push(`  Note     : ${report.message}`);
 
+    // ---- Configuration ----
+    const hasConfig = report.allocatedRamMb || report.jvmPreset || report.customType || report.javaVersionLogLine;
+    if (hasConfig) {
+        sections.push('');
+        sections.push('── Configuration ──');
+        if (report.allocatedRamMb) sections.push(`  RAM       : ${report.allocatedRamMb} MB`);
+        if (report.jvmPreset) sections.push(`  JVM Preset: ${report.jvmPreset}`);
+        if (report.jvmArgs) sections.push(`  JVM Args  : ${report.jvmArgs}`);
+        if (report.javaPath) sections.push(`  Java Path : ${report.javaPath}`);
+        if (report.javaVersionLogLine) sections.push(`  Java Info : ${report.javaVersionLogLine}`);
+        if (report.systemMemoryLogLine) sections.push(`  Sys Mem   : ${report.systemMemoryLogLine}`);
+    }
+
+    // ---- Likely cause ----
+    if (report.errorClass || report.errorSummary) {
+        sections.push('');
+        sections.push('── Likely Error ──');
+        if (report.errorClass) sections.push(`  Class    : ${report.errorClass}`);
+        if (report.errorSummary) sections.push(`  Message  : ${report.errorSummary}`);
+    }
+
+    // ---- Crash file path ----
+    if (report.crashReportFile) sections.push(`\n  Crash file: ${report.crashReportFile}`);
+
+    // ---- Suggestions ----
+    const suggestions = [];
+    if (report.errorClass) {
+        if (/OutOfMemoryError|Java heap space/i.test(report.errorClass) || /Memory/i.test(report.errorSummary || '')) {
+            suggestions.push('• Increase allocated RAM in Instance Settings (try 4096 MB or higher).');
+            suggestions.push('• If using custom JVM args, make sure -Xmx matches your desired limit.');
+        }
+        if (/ClassNotFound|NoClassDefFound/i.test(report.errorClass)) {
+            suggestions.push('• A required mod or library is missing. Try switching profiles or reinstalling the version.');
+        }
+        if (/UnsatisfiedLinkError|Native/i.test(report.errorClass)) {
+            suggestions.push('• A native library failed to load. Check that your graphics drivers are up to date.');
+        }
+        if (/InvocationTargetException/i.test(report.errorClass)) {
+            suggestions.push('• A mod or loader failed to initialize. Check the crash report file for the root cause.');
+        }
+    }
+    if (report.code === 1 || report.signal) {
+        suggestions.push('• The process was terminated unexpectedly. Check for antivirus interference or low system resources.');
+        if (report.signal === 'SIGKILL') suggestions.push('• SIGKILL often means an out-of-memory killer or forced termination.');
+    }
+    if (!suggestions.length) {
+        suggestions.push('• Check the crash report file below for specific mod or game errors.');
+        suggestions.push('• Try launching with a different mod profile or clearing the instance mods folder.');
+    }
+    sections.push('');
+    sections.push('── Suggestions ──');
+    sections.push(suggestions.join('\n'));
+
+    // ---- Crash report tail ----
     if (report.crashReportPreview) {
-        lines.push('');
-        lines.push('=== Crash Report (Tail) ===');
-        lines.push(report.crashReportPreview);
+        sections.push('');
+        sections.push('───────────────────────────────────');
+        sections.push('  CRASH REPORT (last 120 lines)');
+        sections.push('───────────────────────────────────');
+        sections.push(report.crashReportPreview);
     }
 
+    // ---- latest.log tail ----
     if (report.latestLogTail) {
-        lines.push('');
-        lines.push('=== latest.log (Tail) ===');
-        lines.push(report.latestLogTail);
+        sections.push('');
+        sections.push('───────────────────────────────────');
+        sections.push('  LATEST.LOG (last 120 lines)');
+        sections.push('───────────────────────────────────');
+        sections.push(report.latestLogTail);
     }
 
-    return lines.join('\n');
+    return sections.join('\n');
 }
 
 function hideCrashReportModal() {
@@ -204,42 +299,6 @@ function sortProfiles(profiles) {
         if (bi === -1) return -1;
         return ai - bi;
     });
-}
-
-function normalizeRamMb(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 4096;
-    return Math.max(512, Math.min(65536, Math.round(parsed)));
-}
-
-function clampRamForSlider(value) {
-    return Math.max(2, Math.min(10, Number(value)));
-}
-
-function applySoftRamSnap(valueGb) {
-    const clamped = clampRamForSlider(valueGb);
-    const nearestMarker = Math.round(clamped / 2) * 2;
-    const SNAP_DISTANCE_GB = 0.12;
-    if (Math.abs(clamped - nearestMarker) <= SNAP_DISTANCE_GB) return nearestMarker;
-    return Number(clamped.toFixed(1));
-}
-
-function normalizeRamGb(value) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 4;
-    return Math.max(0.5, Math.min(64, Number(parsed.toFixed(1))));
-}
-
-function gbToMb(valueGb) {
-    return Math.round(Number(valueGb) * 1024);
-}
-
-function mbToGb(valueMb) {
-    return Number(valueMb) / 1024;
-}
-
-function formatRamGb(valueGb) {
-    return Number.isInteger(valueGb) ? String(valueGb) : valueGb.toFixed(1).replace(/\.0$/, '');
 }
 
 function updateRamRemainingDisplay() {
@@ -388,6 +447,8 @@ async function saveInstanceSettings() {
     };
     ipcRenderer.invoke('save-settings', { version, settings: s });
 }
+
+const debouncedSaveInstanceSettings = debounce(saveInstanceSettings, 300);
 
 // --- CORE UI ---
 function setSignedInState(allowed) {
@@ -785,23 +846,23 @@ async function initUI() {
         setRamSlider.value = String(sliderGb);
         if (setRam) setRam.value = formatRamGb(sliderGb);
         updateRamRemainingDisplay();
-        saveInstanceSettings();
+        debouncedSaveInstanceSettings();
     });
     setRam?.addEventListener('input', () => {
         const ramGb = normalizeRamGb(setRam.value);
-        if (setRamSlider) setRamSlider.value = String(clampRamForSlider(ramGb));
+        if (setRamSlider) setRamSlider.value = String(applySoftRamSnap(ramGb));
         updateRamRemainingDisplay();
     });
     setRam?.addEventListener('change', () => {
         const ramGb = normalizeRamGb(setRam.value);
         setRam.value = formatRamGb(ramGb);
-        if (setRamSlider) setRamSlider.value = String(clampRamForSlider(ramGb));
+        if (setRamSlider) setRamSlider.value = String(applySoftRamSnap(ramGb));
         updateRamRemainingDisplay();
-        saveInstanceSettings();
+        debouncedSaveInstanceSettings();
     });
-    setPreset.addEventListener('change', (e) => { customArgsContainer.style.display = e.target.value === 'custom' ? 'flex' : 'none'; saveInstanceSettings(); });
-    setJvm.addEventListener('input', saveInstanceSettings);
-    setJavaPath.addEventListener('input', saveInstanceSettings);
+    setPreset.addEventListener('change', (e) => { customArgsContainer.style.display = e.target.value === 'custom' ? 'flex' : 'none'; debouncedSaveInstanceSettings(); });
+    setJvm.addEventListener('input', debouncedSaveInstanceSettings);
+    setJavaPath.addEventListener('input', debouncedSaveInstanceSettings);
 
     toggleAdvancedBtn.addEventListener('click', () => {
         const isOpen = advancedPanel.classList.toggle('open');
@@ -1322,8 +1383,7 @@ async function initUI() {
                         isCustom: true,
                         baseVersion: base,
                         customType: type,
-                        accentColor: accent,
-                        playtime: existing?.playtime || 0
+                        accentColor
                     }
                 });
             }
@@ -1545,12 +1605,58 @@ async function initUI() {
         if (event.target === crashReportModal) hideCrashReportModal();
     });
 
+    // Copy Report button
+    const crashReportCopy = document.getElementById('crash-report-copy');
+    if (crashReportCopy && crashReportDetails) {
+        crashReportCopy.addEventListener('click', () => {
+            crashReportDetails.select();
+            document.execCommand('copy');
+            crashReportCopy.textContent = 'Copied!';
+            setTimeout(() => { crashReportCopy.textContent = 'Copy Report'; }, 2000);
+        });
+    }
+
     loginModal?.addEventListener('click', (e) => {
         if (e.target === loginModal) showLoginModal(false);
     });
     loginModal?.querySelector('.login-card-wrapper')?.addEventListener('click', (e) => {
         e.stopPropagation();
     });
+
+    async function validateLaunch(version) {
+        if (!electronAvailable) return null;
+
+        // 1. RAM bounds check
+        const ramValue = normalizeRamGb(setRam?.value || setRamSlider?.value || "4");
+        if (ramValue < 0.5) return 'RAM allocation is too low. Set at least 0.5 GB.';
+        if (Number.isFinite(totalSystemRamMb) && totalSystemRamMb > 0) {
+            const ramMb = gbToMb(ramValue);
+            if (ramMb > totalSystemRamMb - 512)
+                return `RAM allocation (${formatRamGb(ramValue)} GB) exceeds available system memory.`;
+        }
+
+        // 2. Java path check (if provided)
+        const javaPath = (setJavaPath?.value || '').trim();
+        if (javaPath) {
+            try {
+                const result = await ipcRenderer.invoke('validate-java-path', javaPath);
+                if (!result?.valid) return result?.error || 'The specified Java path is invalid.';
+            } catch { /* main process may not support this yet, skip gracefully */ }
+        }
+
+        // 3. Custom JVM args sanity
+        if (setPreset?.value === 'custom') {
+            const jvmArgs = (setJvm?.value || '').trim();
+            if (!jvmArgs) return 'Custom JVM preset is selected but no arguments are provided.';
+            if (jvmArgs.length < 2 || !jvmArgs.startsWith('-'))
+                return 'Custom JVM arguments appear invalid — they should start with a dash (e.g. -Xmx2G).';
+        }
+
+        // 4. Signed-in check
+        if (!isSignedIn) return 'Please sign in before launching.';
+
+        return null; // all clear
+    }
 
     launchGroup?.addEventListener('mousemove', (event) => {
         if(!isSignedIn) return;
@@ -1569,6 +1675,17 @@ async function initUI() {
         if (!isSignedIn || e.target.closest('#version-select') || e.target.closest('#launch-profile-select')) return;
         const v = versionSelect?.value;
         if (!v) return;
+
+        // --- Pre-launch validation ---
+        const validationError = await validateLaunch(v);
+        if (validationError) {
+            setStatus(validationError, 0);
+            statusBar.classList.add('visible');
+            statusVersion.textContent = v;
+            setTimeout(() => statusBar.classList.remove('visible'), 3000);
+            return;
+        }
+
         const selectedProfile = launchProfileSelect?.value || null;
         statusBar.classList.add('visible');
         statusVersion.textContent = selectedProfile ? `${v} (${formatProfileName(selectedProfile)})` : v;
@@ -1643,6 +1760,27 @@ async function initUI() {
     crackedInput?.addEventListener('input', (e) => {
         e.target.value = e.target.value.replace(/\s+/g, '');
     });
+
+    // --- Instance Search / Filter ---
+    const instancesSearch = document.getElementById('instances-search');
+    if (instancesSearch) {
+        instancesSearch.addEventListener('input', () => {
+            const query = (instancesSearch.value || '').trim().toLowerCase();
+            const instanceView = document.getElementById('instances-view');
+            if (!instanceView) return;
+
+            const cards = instanceView.querySelectorAll('.lean-version-card, .custom-version-card');
+            cards.forEach((card) => {
+                const btn = card.querySelector('.lean-version-main-btn, .custom-version-main-btn');
+                const text = (btn?.textContent || card.dataset?.versionName || '').toLowerCase();
+                if (!query || text.includes(query)) {
+                    card.classList.remove('version-card-hidden');
+                } else {
+                    card.classList.add('version-card-hidden');
+                }
+            });
+        });
+    }
 
     // FIX: Perfected Bubble Spawning & Animation (Pooled + Cached Geometry + rAF Throttling)
     const MAX_BUBBLES = 140;
@@ -1782,6 +1920,9 @@ function setupCustomSelects() {
         
         proxyBtn.className = 'custom-select__button';
         proxyBtn.textContent = select.options[select.selectedIndex]?.text || '';
+        if (select.options[select.selectedIndex]?.style?.color) {
+            proxyBtn.style.color = select.options[select.selectedIndex].style.color;
+        }
         
         // Copy computed sizes
         proxyBtn.style.padding = computedStyle.padding;
@@ -1791,6 +1932,15 @@ function setupCustomSelects() {
         
         const list = document.createElement('div');
         list.className = 'custom-select__list';
+        // Append list to body so it escapes all stacking contexts
+        document.body.appendChild(list);
+
+        function positionList() {
+            const rect = proxyBtn.getBoundingClientRect();
+            list.style.top = (rect.bottom + 8) + 'px';
+            list.style.left = rect.left + 'px';
+            list.style.width = rect.width + 'px';
+        }
 
         function updateList() {
             list.innerHTML = '';
@@ -1800,12 +1950,18 @@ function setupCustomSelects() {
                 optDiv.className = 'custom-select__option';
                 if (select.selectedIndex === i) optDiv.dataset.selected = 'true';
                 optDiv.textContent = opt.text;
+                // Carry over inline color + weight from original option for theme-colored Lean versions
+                const optColor = opt.style.color;
+                const optWeight = opt.style.fontWeight;
+                if (optColor) optDiv.style.color = optColor;
+                if (optWeight === 'bold' || Number(optWeight) >= 600) optDiv.style.fontWeight = '700';
                 optDiv.onclick = (e) => {
                     e.stopPropagation();
                     select.selectedIndex = i;
                     select.dispatchEvent(new Event('change'));
                     proxyBtn.textContent = opt.text;
                     list.classList.remove('visible');
+                    wrapper.style.zIndex = '';
                 };
                 list.appendChild(optDiv);
             }
@@ -1814,12 +1970,16 @@ function setupCustomSelects() {
 
         const observer = new MutationObserver(() => {
             updateList();
-            proxyBtn.textContent = select.options[select.selectedIndex]?.text || '';
+            const selOpt = select.options[select.selectedIndex];
+            proxyBtn.textContent = selOpt?.text || '';
+            if (selOpt?.style?.color) proxyBtn.style.color = selOpt.style.color; else proxyBtn.style.color = '';
         });
         observer.observe(select, { childList: true, subtree: true });
 
         select.addEventListener('change', () => {
-            proxyBtn.textContent = select.options[select.selectedIndex]?.text || '';
+            const selOpt = select.options[select.selectedIndex];
+            proxyBtn.textContent = selOpt?.text || '';
+            if (selOpt?.style?.color) proxyBtn.style.color = selOpt.style.color; else proxyBtn.style.color = '';
             Array.from(list.children).forEach((child, i) => {
                 child.dataset.selected = (i === select.selectedIndex) ? 'true' : 'false';
             });
@@ -1828,18 +1988,28 @@ function setupCustomSelects() {
         proxyBtn.onclick = (e) => {
             e.stopPropagation();
             const isVisible = list.classList.contains('visible');
+            // close all lists & reset all wrapper z-indices
             document.querySelectorAll('.custom-select__list').forEach(l => l.classList.remove('visible'));
-            if (!isVisible) list.classList.add('visible');
+            document.querySelectorAll('.custom-select').forEach(w => w.style.zIndex = '');
+            if (!isVisible) {
+                positionList();
+                list.classList.add('visible');
+                wrapper.style.zIndex = '4100';
+            }
         };
 
+        // Reposition on scroll/resize
+        window.addEventListener('scroll', () => { if (list.classList.contains('visible')) positionList(); }, true);
+        window.addEventListener('resize', () => { if (list.classList.contains('visible')) positionList(); });
+
         wrapper.appendChild(proxyBtn);
-        wrapper.appendChild(list);
         select.parentNode.insertBefore(wrapper, select.nextSibling);
     });
 
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.custom-select')) {
             document.querySelectorAll('.custom-select__list').forEach(l => l.classList.remove('visible'));
+            document.querySelectorAll('.custom-select').forEach(w => w.style.zIndex = '');
         }
     });
 }

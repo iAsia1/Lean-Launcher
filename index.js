@@ -1,4 +1,21 @@
-require('dotenv').config();
+// Simple .env loader (replaces dotenv, saves ~5 MB)
+try {
+  const envPath = require('path').join(__dirname, '.env');
+  if (require('fs').existsSync(envPath)) {
+    require('fs').readFileSync(envPath, 'utf-8')
+      .split(/\r?\n/)
+      .filter(line => line.trim() && !line.startsWith('#'))
+      .forEach(line => {
+        const eq = line.indexOf('=');
+        if (eq > 0) {
+          const key = line.slice(0, eq).trim();
+          const val = line.slice(eq + 1).trim();
+          if (key) process.env[key] = val;
+        }
+      });
+  }
+} catch(e) { /* .env is optional */ }
+
 const { Auth } = require("msmc");
 const { Client, Authenticator } = require("minecraft-launcher-core");
 const fs = require('fs');
@@ -104,6 +121,31 @@ function copyDirectoryRecursive(sourceDir, targetDir) {
     return copiedFiles;
 }
 
+// --- Profile Sync Manifest (avoids redundant clears/copies on every launch) ---
+function readSyncManifest(instanceDirectory) {
+    const manifestPath = path.join(instanceDirectory, 'lean-sync-manifest.json');
+    try {
+        if (!fs.existsSync(manifestPath)) return null;
+        const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        if (raw && raw.baseVersion && raw.profile) return raw;
+        return null;
+    } catch { return null; }
+}
+
+function writeSyncManifest(instanceDirectory, baseVersion, profile) {
+    const manifestPath = path.join(instanceDirectory, 'lean-sync-manifest.json');
+    const tmpPath = manifestPath + '.tmp';
+    const data = { baseVersion, profile, syncedAt: Date.now() };
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, manifestPath);
+}
+
+function isProfileAlreadySynced(instanceDirectory, baseVersion, profile) {
+    const manifest = readSyncManifest(instanceDirectory);
+    if (!manifest) return false;
+    return manifest.baseVersion === baseVersion && manifest.profile === profile;
+}
+
 function syncBundledProfileMods(baseVersion, profile, instanceDirectory, onProgress) {
     if (!OFFICIAL_LEAN_BASE_VERSIONS.has(baseVersion)) {
         return { synced: false, reason: 'not-official-lean' };
@@ -123,6 +165,7 @@ function syncBundledProfileMods(baseVersion, profile, instanceDirectory, onProgr
     const copiedFiles = copyDirectoryRecursive(sourceModsDir, targetModsDir);
     if (onProgress) onProgress(`Synced ${copiedFiles} mod file(s) for ${profile}`, 34);
 
+    writeSyncManifest(instanceDirectory, baseVersion, profile);
     return { synced: true, copiedFiles };
 }
 
@@ -149,6 +192,7 @@ function syncBundledProfileShaders(baseVersion, profile, instanceDirectory, onPr
     const copiedFiles = copyDirectoryRecursive(sourceShadersDir, targetShadersDir);
     if (onProgress) onProgress(`Synced ${copiedFiles} shader pack file(s)`, 34);
 
+    writeSyncManifest(instanceDirectory, baseVersion, profile);
     return { synced: true, copiedFiles };
 }
 
@@ -176,6 +220,7 @@ function syncBundledProfileResourcePacks(baseVersion, profile, instanceDirectory
     const copiedFiles = copyDirectoryRecursive(sourceResourcePacksDir, targetResourcePacksDir);
     if (onProgress) onProgress(`Synced ${copiedFiles} resource pack(s)`, 34);
 
+    writeSyncManifest(instanceDirectory, baseVersion, profile);
     return { synced: true, copiedFiles };
 }
 
@@ -184,7 +229,11 @@ function loadSettings() {
     try { return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')); } 
     catch { return {}; }
 }
-function saveSettings(settingsObj) { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settingsObj, null, 2), 'utf-8'); }
+function saveSettings(settingsObj) {
+    const tmpPath = SETTINGS_PATH + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(settingsObj, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, SETTINGS_PATH);
+}
 function getGlobalSettings() {
     const globalSettings = loadSettings()._global || {};
     return {
@@ -252,7 +301,9 @@ function loadSavedAuth() {
 
 function saveSavedAuth(authState) {
     const normalized = normalizeAuthState(authState);
-    fs.writeFileSync(AUTH_CACHE_PATH, JSON.stringify(normalized, null, 2), 'utf-8');
+    const tmpPath = AUTH_CACHE_PATH + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(normalized, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, AUTH_CACHE_PATH);
     return normalized;
 }
 
@@ -669,16 +720,56 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
         const crashReportsDir = path.join(gameRoot, 'crash-reports');
         const latestCrash = getMostRecentCrashReport(crashReportsDir);
 
+        // --- parse key info from latest.log for a quick summary ---
+        let systemMemoryLogLine = null;
+        let javaVersionLogLine = null;
+        let errorClass = null;
+        let errorSummary = null;
+        try {
+            if (fs.existsSync(latestLogPath)) {
+                const rawLog = fs.readFileSync(latestLogPath, 'utf-8');
+                const logLines = rawLog.split(/\r?\n/);
+
+                for (const line of logLines) {
+                    if (!systemMemoryLogLine && /\/INFO\].*Memory available/.test(line))
+                        systemMemoryLogLine = line.trim();
+                    if (!javaVersionLogLine && /\/INFO\].*Java is/.test(line))
+                        javaVersionLogLine = line.trim();
+                }
+
+                // last ERROR/FATAL line is usually the crash cause
+                for (let idx = logLines.length - 1; idx >= 0; idx--) {
+                    const line = logLines[idx];
+                    if (/\] (ERROR|FATAL) /.test(line) && !errorSummary) {
+                        errorSummary = line.replace(/^\[.*?\]\s*\[.*?\/.*?\]\s*/, '').trim();
+                    }
+                    if (!errorClass && /\] (caused by|exception|error):/i.test(line)) {
+                        errorClass = line.replace(/^.*:\s*/, '').trim().split(/\s+/)[0];
+                    }
+                    if (errorClass && errorSummary) break;
+                }
+            }
+        } catch { /* best-effort parsing */ }
+
         return {
             timestamp: new Date().toISOString(),
             version: selectedVersion,
             profile: launchProfile || null,
+            allocatedRamMb: instanceSettings?.ram || '4096',
+            jvmPreset: instanceSettings?.preset || 'default',
+            jvmArgs: instanceSettings?.jvmArgs || null,
+            javaPath: instanceSettings?.javaPath || null,
+            customType: effectiveCustomType || null,
             message: baseMessage,
             code: typeof code === 'number' ? code : null,
             signal: signal || null,
-            latestLogTail: readTailLines(latestLogPath, 80),
+            systemMemoryLogLine,
+            javaVersionLogLine,
+            errorClass,
+            errorSummary,
+            latestLogTail: readTailLines(latestLogPath, 120),
             crashReportFile: latestCrash?.name || null,
-            crashReportPreview: latestCrash ? readTailLines(latestCrash.fullPath, 80) : null
+            crashReportPreview: latestCrash ? readTailLines(latestCrash.fullPath, 120) : null
         };
     }
 
@@ -700,9 +791,15 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     }
 
     if (launchProfile) {
-        syncBundledProfileMods(launchVersion, launchProfile, gameRoot, onProgress);
-        syncBundledProfileShaders(launchVersion, launchProfile, gameRoot, onProgress);
-        syncBundledProfileResourcePacks(launchVersion, launchProfile, gameRoot, onProgress);
+        const alreadySynced = isProfileAlreadySynced(gameRoot, launchVersion, launchProfile);
+        if (alreadySynced) {
+            if (onProgress) onProgress(`Profile ${launchProfile} already synced, skipping.`, 34);
+        } else {
+            syncBundledProfileMods(launchVersion, launchProfile, gameRoot, onProgress);
+            syncBundledProfileShaders(launchVersion, launchProfile, gameRoot, onProgress);
+            syncBundledProfileResourcePacks(launchVersion, launchProfile, gameRoot, onProgress);
+            writeSyncManifest(gameRoot, launchVersion, launchProfile);
+        }
     }
 
     if (instanceSettings.preset === 'optimized') opts.customArgs = ["-XX:+UseG1GC", "-XX:-UseAdaptiveSizePolicy", "-XX:-OmitStackTraceInFastThrow", "-XX:MaxGCPauseMillis=200"];

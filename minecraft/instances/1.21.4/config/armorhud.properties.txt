@@ -1,7 +1,0 @@
-#Simple Survival Tweaks config file
-#Mon Apr 27 20:53:56 MDT 2026
-armor_hud=true
-better_mount_hud=false
-disable_armor_bar=false
-double_hotbar=false
-right_to_left=false

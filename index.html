@@ -4,11 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Lean Client</title>
+    <script>
+      (function(){
+        try {
+          var fs = require('fs'), p = require('path');
+          var sp = p.join(__dirname, 'settings.json');
+          if (fs.existsSync(sp)) {
+            var s = JSON.parse(fs.readFileSync(sp, 'utf-8'));
+            var t = (s._global && s._global.theme) || 'light';
+            document.documentElement.setAttribute('data-theme', t);
+            return;
+          }
+        } catch(e) {}
+        document.documentElement.setAttribute('data-theme', 'light');
+      })();
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="style.css">
 </head>
-<body data-theme="light">
+<body>
     <div id="bubbleLayer" aria-hidden="true"></div>
 
     <div id="content">
@@ -126,7 +141,7 @@
 
                     <div class="about-section about-me-section">
                         <h3>About Me</h3>
-                        <p>This section will include information about the creator.</p>
+                        <p>Hello! My name is Lyam, the creator of Lean Launcher. Lean Launcher (Previously only known as Lean Client) was a joke that me and my friends had, regarding many of the weird names some Minecraft clients had. I later started making my own collections of mods, which I labelled "Lean Client" although it wasn't a proper Minecraft client. Using those old mods as inspiration to actually create a client, Lean Launcher was born.</p>
                     </div>
                     </div>
                 </div>
@@ -250,6 +265,9 @@
             <div id="instances-view" class="page-view fade-right">
                 <div class="glass-panel">
                     <h2 class="settings-title">Instance Manager</h2>
+                    <div class="instances-search-wrap">
+                        <input type="text" id="instances-search" class="text-input instances-search-input" placeholder="Search instances...">
+                    </div>
                     <div class="settings-scroll-area">
                     
                     <h3 style="color: var(--text); border-bottom: 2px solid var(--accent); padding-bottom: 4px; display: inline-block;">Official Lean Client Old Versions</h3>
@@ -278,7 +296,7 @@
 
                     <h3 style="color: var(--text); border-bottom: 2px solid var(--accent); padding-bottom: 4px; display: inline-block;">Custom Versions</h3>
                     <div id="custom-versions-list" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px;">
-                        <button id="btn-create-version" class="custom-version-main-btn" style="border-width: 2px; border-style: dashed; border-color: rgba(128, 128, 128, 0.4); background: rgba(128, 128, 128, 0.1); color: var(--text); text-shadow: none; padding: 12px; font-size: 1rem;">+ Create New Version</button>
+                        <button id="btn-create-version" class="custom-version-main-btn" style="border-width: 2px; border-style: dashed; border-color: rgba(128, 128, 128, 0.4); background: rgba(128, 128, 128, 0.1); color: var(--text); text-shadow: none;">+ Create New Version</button>
                     </div>
                     </div>
                 </div>
@@ -425,7 +443,8 @@
             <p id="crash-report-message">The game exited unexpectedly.</p>
             <textarea id="crash-report-details" class="file-editor-content crash-report-details" readonly></textarea>
             <div class="launcher-modal-actions">
-                <button id="crash-report-close" class="login-btn" style="margin-bottom: 0;">OK</button>
+                <button id="crash-report-copy" class="login-btn" style="margin-bottom: 0;">Copy Report</button>
+                <button id="crash-report-close" class="login-cancel-btn" style="margin-bottom: 0;">Close</button>
             </div>
         </div>
     </div>
