@@ -38,6 +38,19 @@ const AUTH_CACHE_PATH = path.join(__dirname, 'auth-cache.json');
 const SETTINGS_PATH = path.join(__dirname, 'settings.json');
 const DEFAULT_AUTH_STATE = { activeAccountId: null, accounts: [] };
 
+// Determine data directory: use writable userData when packaged, __dirname in dev
+const electronApp = (() => { try { return require('electron').app; } catch { return null; } })();
+const DATA_ROOT = electronApp ? electronApp.getPath('userData') : __dirname;
+
+// Minecraft root: prefer existing minecraft/ next to the app (dev mode), otherwise userData (packaged)
+const MC_ROOT = fs.existsSync(path.join(__dirname, 'minecraft', 'versions'))
+    ? path.join(__dirname, 'minecraft')
+    : path.join(DATA_ROOT, 'minecraft');
+
+const AUTH_CACHE_PATH = path.join(DATA_ROOT, 'auth-cache.json');
+const SETTINGS_PATH = path.join(DATA_ROOT, 'settings.json');
+const MOD_PROFILE_ROOT = path.join(__dirname, 'mod-profiles');
+
 let cancelRequested = false;
 let cancelInterval = null;
 let instanceStartTimes = {}; 
@@ -484,7 +497,7 @@ async function resolveFabricInstall(baseVersion, instanceSettings) {
     if (!resolvedInstallerVersion) throw new Error('No Fabric installer version found');
 
     const profileName = `fabric-loader-${resolvedLoaderVersion}-${baseVersion}`;
-    const installerJarPath = path.join(__dirname, 'minecraft', 'cache', 'installers', 'fabric', `${resolvedInstallerVersion}.jar`);
+    const installerJarPath = path.join(MC_ROOT, 'cache', 'installers', 'fabric', `${resolvedInstallerVersion}.jar`);
     const installerUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-installer/${resolvedInstallerVersion}/fabric-installer-${resolvedInstallerVersion}.jar`;
 
     return { loaderVersion: resolvedLoaderVersion, installerVersion: resolvedInstallerVersion, profileName, installerJarPath, installerUrl };
@@ -597,7 +610,7 @@ async function resolveForgeInstall(baseVersion, instanceSettings, selectedVersio
     if (!resolvedForgeBuild) throw new Error(`No Forge build found for ${baseVersion}`);
 
     const installerFileName = `forge-${baseVersion}-${resolvedForgeBuild}-installer.jar`;
-    const installerJarPath = path.join(__dirname, 'minecraft', 'cache', 'installers', 'forge', installerFileName);
+    const installerJarPath = path.join(MC_ROOT, 'cache', 'installers', 'forge', installerFileName);
     const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${baseVersion}-${resolvedForgeBuild}/${installerFileName}`;
 
     const allSettings = loadSettings();
@@ -669,8 +682,8 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     const launchVersion = instanceSettings?.baseVersion || selectedVersion;
     const explicitType = instanceSettings?.customType;
     const effectiveCustomType = explicitType || (OFFICIAL_LEAN_BASE_VERSIONS.has(selectedVersion) ? 'fabric' : 'vanilla');
-    const gameRoot = path.join(__dirname, "minecraft", "instances", selectedVersion);
-    const mcRoot = path.join(__dirname, "minecraft");
+    const gameRoot = path.join(MC_ROOT, "instances", selectedVersion);
+    const mcRoot = MC_ROOT;
     if (!fs.existsSync(gameRoot)) fs.mkdirSync(gameRoot, { recursive: true });
 
     let opts = {

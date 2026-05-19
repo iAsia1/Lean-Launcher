@@ -6,6 +6,17 @@ const { loginAccount, getAuthAccounts, setActiveAuthAccount, removeAuthAccount }
 const { autoUpdater } = require('electron-updater');
 let mainWindow = null;
 
+// Resolve the writable minecraft instance root (packaged: userData, dev: __dirname)
+function resolveMcRoot() {
+    const devPath = path.join(__dirname, 'minecraft');
+    if (fs.existsSync(path.join(devPath, 'versions'))) return devPath;
+    return path.join(app.getPath('userData'), 'minecraft');
+}
+
+function resolveInstancePath(version, relPath = '') {
+    return path.join(resolveMcRoot(), 'instances', version, relPath);
+}
+
 function copyDirectoryContentsRecursive(sourceDir, targetDir) {
   if (!fs.existsSync(sourceDir)) return 0;
   fs.mkdirSync(targetDir, { recursive: true });
@@ -163,7 +174,7 @@ ipcMain.handle('validate-java-path', (_, javaPath) => {
 });
 
 ipcMain.handle('open-instance-folder', async (_, version) => {
-  const instancePath = path.join(__dirname, 'minecraft', 'instances', version);
+  const instancePath = resolveInstancePath(version);
   if (!fs.existsSync(instancePath)) fs.mkdirSync(instancePath, { recursive: true });
   await shell.openPath(instancePath);
   return { success: true };
@@ -175,7 +186,7 @@ ipcMain.handle('delete-custom-version', (_, version) => {
   delete all[version];
   saveSettings(all);
 
-  const instancePath = path.join(__dirname, 'minecraft', 'instances', version);
+  const instancePath = resolveInstancePath(version);
   if (fs.existsSync(instancePath)) {
     fs.rmSync(instancePath, { recursive: true, force: true });
   }
@@ -196,8 +207,8 @@ ipcMain.handle('rename-custom-version', (_, { oldVersion, newVersion }) => {
   delete all[oldVersion];
   saveSettings(all);
 
-  const oldInstancePath = path.join(__dirname, 'minecraft', 'instances', oldVersion);
-  const newInstancePath = path.join(__dirname, 'minecraft', 'instances', newVersion);
+  const oldInstancePath = resolveInstancePath(oldVersion);
+  const newInstancePath = resolveInstancePath(newVersion);
 
   if (fs.existsSync(oldInstancePath) && !fs.existsSync(newInstancePath)) {
     fs.renameSync(oldInstancePath, newInstancePath);
@@ -207,7 +218,7 @@ ipcMain.handle('rename-custom-version', (_, { oldVersion, newVersion }) => {
 });
 
 ipcMain.handle('list-instance-directory', (_, { version, relPath }) => {
-  const basePath = path.resolve(__dirname, 'minecraft', 'instances', version);
+  const basePath = path.resolve(resolveInstancePath(version));
   const targetPath = path.resolve(basePath, relPath || '.');
 
   if (!targetPath.startsWith(basePath)) return [];
@@ -229,7 +240,7 @@ ipcMain.handle('list-instance-directory', (_, { version, relPath }) => {
 });
 
 ipcMain.handle('read-instance-file', (_, { version, relPath }) => {
-  const basePath = path.resolve(__dirname, 'minecraft', 'instances', version);
+  const basePath = path.resolve(resolveInstancePath(version));
   const targetPath = path.resolve(basePath, relPath || '.');
 
   if (!targetPath.startsWith(basePath)) return { success: false, error: 'Invalid path' };
@@ -243,7 +254,7 @@ ipcMain.handle('read-instance-file', (_, { version, relPath }) => {
 });
 
 ipcMain.handle('write-instance-file', (_, { version, relPath, content }) => {
-  const basePath = path.resolve(__dirname, 'minecraft', 'instances', version);
+  const basePath = path.resolve(resolveInstancePath(version));
   const targetPath = path.resolve(basePath, relPath || '.');
 
   if (!targetPath.startsWith(basePath)) return { success: false, error: 'Invalid path' };
@@ -257,7 +268,7 @@ ipcMain.handle('write-instance-file', (_, { version, relPath, content }) => {
 });
 
 ipcMain.handle('upload-instance-files', async (_, { version, relPath }) => {
-  const basePath = path.resolve(__dirname, 'minecraft', 'instances', version);
+  const basePath = path.resolve(resolveInstancePath(version));
   const targetPath = path.resolve(basePath, relPath || '.');
 
   if (!targetPath.startsWith(basePath)) return { success: false, error: 'Invalid path' };
@@ -290,7 +301,7 @@ ipcMain.handle('upload-instance-files', async (_, { version, relPath }) => {
 });
 
 ipcMain.handle('copy-files-into-instance-folder', (_, { version, relPath, sourcePaths }) => {
-  const basePath = path.resolve(__dirname, 'minecraft', 'instances', version);
+  const basePath = path.resolve(resolveInstancePath(version));
   const targetPath = path.resolve(basePath, relPath || '.');
 
   if (!targetPath.startsWith(basePath)) return { success: false, error: 'Invalid path' };
