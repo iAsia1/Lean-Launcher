@@ -37,8 +37,9 @@
       "icon": "icon.ico"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "icon.png"
+      "target": ["deb", "AppImage", "dir"],
+      "icon": "icon.png",
+      "category": "Game"
     },
     "mac": {
       "target": "dmg",
@@ -52,7 +53,11 @@
       "!minecraft/logs",
       "!minecraft/cache",
       "!minecraft/saves",
-      "!minecraft/instances"
+      "!minecraft/instances",
+      "!minecraft/forge",
+      "!minecraft/config",
+      "!minecraft/mods",
+      "!minecraft/resourcepacks"
     ]
   }
 }

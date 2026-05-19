@@ -3,11 +3,11 @@ try {
     const electron = require('electron');
     ipcRenderer = electron.ipcRenderer;
     electronAvailable = Boolean(ipcRenderer && ipcRenderer.invoke);
-    console.log('[LeanLauncher] Electron detected, ipcRenderer.invoke available:', electronAvailable);
 } catch (e) {
-    console.error('[LeanLauncher] Failed to load electron:', e.message || e);
     electronAvailable = false;
 }
+// Expose for diagnostics
+window.__leanLauncher = { electronAvailable, ipcRenderer: Boolean(ipcRenderer) };
 
 const { normalizeRamMb, clampRamForSlider, applySoftRamSnap, normalizeRamGb, gbToMb, mbToGb, formatRamGb } = require('./lib/ram-utils.js');
 
@@ -749,6 +749,13 @@ async function initUI() {
     updateProfileDisplay('Guest');
     setSignedInState(false);
     initAboutAccordion();
+
+    // Startup diagnostic
+    if (statusText) {
+        statusText.textContent = electronAvailable
+            ? 'IPC OK — sign in to launch'
+            : 'ERROR: Electron IPC unavailable';
+    }
 
     const leanVersions = ['1.21.11', '1.21.7', '1.21.4', '1.20', '1.19.4'];
     const topViewByButton = new Map([[btnHome, homeView], [btnSettings, settingsView], [btnInstances, instancesView], [btnAbout, aboutView]]);
