@@ -162,7 +162,7 @@ body {
     z-index: 0;
 }
 
-/* FIX: Added top: 0; left: 0; so bubbles map correctly to coordinates! */
+/* Bubbles are absolute-positioned relative to the layer */
 .bubble {
     position: absolute;
     top: 0;
@@ -199,7 +199,6 @@ body {
     pointer-events: none;
 }
 
-/* FIX: Independent drag area prevents invisible click-blocking shields */
 .drag-area {
     position: absolute;
     inset: 0;
@@ -1347,7 +1346,6 @@ select {
     height: 75vh;
     transition: opacity 0.3s ease, transform 0.3s ease;
     overflow: hidden;
-    /* Contains noise */
     will-change: transform, opacity;
 }
 
@@ -1896,7 +1894,7 @@ select {
     background: rgba(255, 255, 255, 0.04);
 }
 
-/* subtle grain overlay removed completely */
+/* Glassy scrollbars */
 .text-input {
     width: 100%;
     padding: 12px 16px;

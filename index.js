@@ -1,4 +1,3 @@
-// Simple .env loader (replaces dotenv, saves ~5 MB)
 try {
   const envPath = require('path').join(__dirname, '.env');
   if (require('fs').existsSync(envPath)) {
@@ -121,7 +120,7 @@ function copyDirectoryRecursive(sourceDir, targetDir) {
     return copiedFiles;
 }
 
-// --- Profile Sync Manifest (avoids redundant clears/copies on every launch) ---
+// --- Profile Sync Manifest ---
 function readSyncManifest(instanceDirectory) {
     const manifestPath = path.join(instanceDirectory, 'lean-sync-manifest.json');
     try {
@@ -720,7 +719,7 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
         const crashReportsDir = path.join(gameRoot, 'crash-reports');
         const latestCrash = getMostRecentCrashReport(crashReportsDir);
 
-        // --- parse key info from latest.log for a quick summary ---
+        // Parse latest.log for diagnostics
         let systemMemoryLogLine = null;
         let javaVersionLogLine = null;
         let errorClass = null;
@@ -749,7 +748,7 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
                     if (errorClass && errorSummary) break;
                 }
             }
-        } catch { /* best-effort parsing */ }
+        } catch { /* ignore parse errors */ }
 
         return {
             timestamp: new Date().toISOString(),

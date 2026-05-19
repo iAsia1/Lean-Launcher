@@ -37,7 +37,6 @@ const versionSelect = document.getElementById('version-select'), launchProfileCo
 const navLinks = document.querySelector('.nav-links'), navIndicator = document.getElementById('nav-indicator');
 const PROFILE_ORDER = ['lightweight', 'balanced', 'full'];
 
-// FIX: Target the new safe ID for clicks
 const userSection = document.getElementById('user-section'), playerHead = document.getElementById('player-head'), usernameEl = document.getElementById('player-name'), leanDesc = document.getElementById('leanDesc');
 const btnHome = document.getElementById('btn-home'), btnAbout = document.getElementById('btn-about'), btnInstances = document.getElementById('btn-instances'), btnSettings = document.getElementById('btn-settings'), homeView = document.getElementById('home-view'), aboutView = document.getElementById('about-view'), instancesView = document.getElementById('instances-view'), createVersionView = document.getElementById('create-version-view'), settingsView = document.getElementById('settings-view');
 
@@ -176,7 +175,7 @@ function formatCrashReport(report) {
     const sections = [];
     const when = report.timestamp ? new Date(report.timestamp).toLocaleString() : 'Unknown time';
 
-    // ---- Summary ----
+    // Crash summary
     sections.push('═══════════════════════════════════');
     sections.push('  CRASH SUMMARY');
     sections.push('═══════════════════════════════════');
@@ -188,7 +187,7 @@ function formatCrashReport(report) {
     }
     if (report.message) sections.push(`  Note     : ${report.message}`);
 
-    // ---- Configuration ----
+    // Configuration
     const hasConfig = report.allocatedRamMb || report.jvmPreset || report.customType || report.javaVersionLogLine;
     if (hasConfig) {
         sections.push('');
@@ -201,18 +200,15 @@ function formatCrashReport(report) {
         if (report.systemMemoryLogLine) sections.push(`  Sys Mem   : ${report.systemMemoryLogLine}`);
     }
 
-    // ---- Likely cause ----
     if (report.errorClass || report.errorSummary) {
         sections.push('');
-        sections.push('── Likely Error ──');
+        sections.push('── Error ──');
         if (report.errorClass) sections.push(`  Class    : ${report.errorClass}`);
         if (report.errorSummary) sections.push(`  Message  : ${report.errorSummary}`);
     }
 
-    // ---- Crash file path ----
     if (report.crashReportFile) sections.push(`\n  Crash file: ${report.crashReportFile}`);
 
-    // ---- Suggestions ----
     const suggestions = [];
     if (report.errorClass) {
         if (/OutOfMemoryError|Java heap space/i.test(report.errorClass) || /Memory/i.test(report.errorSummary || '')) {
@@ -241,20 +237,18 @@ function formatCrashReport(report) {
     sections.push('── Suggestions ──');
     sections.push(suggestions.join('\n'));
 
-    // ---- Crash report tail ----
     if (report.crashReportPreview) {
         sections.push('');
         sections.push('───────────────────────────────────');
-        sections.push('  CRASH REPORT (last 120 lines)');
+        sections.push('  CRASH REPORT');
         sections.push('───────────────────────────────────');
         sections.push(report.crashReportPreview);
     }
 
-    // ---- latest.log tail ----
     if (report.latestLogTail) {
         sections.push('');
         sections.push('───────────────────────────────────');
-        sections.push('  LATEST.LOG (last 120 lines)');
+        sections.push('  LATEST.LOG');
         sections.push('───────────────────────────────────');
         sections.push(report.latestLogTail);
     }
@@ -1676,7 +1670,7 @@ async function initUI() {
         const v = versionSelect?.value;
         if (!v) return;
 
-        // --- Pre-launch validation ---
+        // Pre-launch validation
         const validationError = await validateLaunch(v);
         if (validationError) {
             setStatus(validationError, 0);
@@ -1700,7 +1694,6 @@ async function initUI() {
         setTimeout(() => statusBar.classList.remove('visible'), 600);
     });
 
-    // FIX: Using the newly ID'd wrapper element
     userSection?.addEventListener('click', () => showLoginModal(true));
     playerHead?.addEventListener('click', () => showLoginModal(true));
     usernameEl?.addEventListener('click', () => showLoginModal(true));
@@ -1761,7 +1754,7 @@ async function initUI() {
         e.target.value = e.target.value.replace(/\s+/g, '');
     });
 
-    // --- Instance Search / Filter ---
+    // Instance search
     const instancesSearch = document.getElementById('instances-search');
     if (instancesSearch) {
         instancesSearch.addEventListener('input', () => {
@@ -1782,7 +1775,7 @@ async function initUI() {
         });
     }
 
-    // FIX: Perfected Bubble Spawning & Animation (Pooled + Cached Geometry + rAF Throttling)
+    // Bubble animation
     const MAX_BUBBLES = 140;
     const SPAWN_INTERVAL_MS = 220;
     const SAFE = 130;
