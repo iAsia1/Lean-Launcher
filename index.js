@@ -62,7 +62,12 @@ if (IS_PACKAGED) {
             for (const entry of fs.readdirSync(src)) {
                 const srcPath = path.join(src, entry);
                 const destPath = path.join(dest, entry);
-                if (fs.statSync(srcPath).isFile()) fs.copyFileSync(srcPath, destPath);
+                const stat = fs.statSync(srcPath);
+                if (stat.isDirectory()) {
+                    fs.cpSync(srcPath, destPath, { recursive: true });
+                } else {
+                    fs.copyFileSync(srcPath, destPath);
+                }
             }
         }
     }
@@ -412,12 +417,26 @@ async function downloadFile(url, destinationPath, onProgress) {
         const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
         await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
         
-        // Use arrayBuffer which works with both Node.js fetch and web fetch
-        const arrayBuffer = await response.arrayBuffer();
-        const data = Buffer.from(arrayBuffer);
-        await fs.promises.writeFile(destinationPath, data);
-        if (onProgress && contentLength > 0) {
-            onProgress(`Downloaded ${(data.length / 1024 / 1024).toFixed(1)} MB`);
+        const writer = fs.createWriteStream(destinationPath);
+        let downloadedBytes = 0;
+        
+        if (response.body) {
+            response.body.on('data', (chunk) => {
+                downloadedBytes += chunk.length;
+                if (onProgress && contentLength > 0) {
+                    const percent = Math.round((downloadedBytes / contentLength) * 100);
+                    onProgress(`Downloading... ${percent}%`);
+                }
+            });
+            await new Promise((resolve, reject) => {
+                response.body.pipe(writer);
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+                response.body.on('error', reject);
+            });
+        } else {
+            const data = Buffer.from(await response.arrayBuffer());
+            await fs.promises.writeFile(destinationPath, data);
         }
         
         return destinationPath;
@@ -428,18 +447,17 @@ async function downloadFile(url, destinationPath, onProgress) {
 
 async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
     return new Promise((resolve, reject) => {
-        let stderr = '';
         const child = require('child_process').execFile(
             javaExecutable,
             ['-jar', jarPath, ...args],
-            { maxBuffer: 1024 * 1024 * 50, timeout: 600000 }
+            { maxBuffer: 1024 * 1024 * 50, timeout: 600000 } // 10 minute timeout
         );
         
         let lastUpdate = Date.now();
         const updateInterval = setInterval(() => {
             const elapsed = Math.floor((Date.now() - lastUpdate) / 1000);
             if (onProgress) onProgress(`Installing... (${elapsed}s elapsed)`);
-        }, 3000);
+        }, 3000); // Update progress every 3 seconds
         
         child.stdout?.on('data', (data) => {
             const output = data.toString();
@@ -450,7 +468,6 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         
         child.stderr?.on('data', (data) => {
             const output = data.toString();
-            stderr += output;
             console.log(`[Installer Error] ${output}`);
         });
         
@@ -462,8 +479,7 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         child.on('close', (code) => {
             clearInterval(updateInterval);
             if (code !== 0) {
-                const tail = stderr.slice(-500);
-                reject(new Error(`Installer exited with code ${code}${tail ? '. Stderr: ' + tail : ''}`));
+                reject(new Error(`Installer exited with code ${code}`));
             } else {
                 resolve();
             }
@@ -523,22 +539,16 @@ async function ensureVanillaVersionExists(baseVersion, mcRoot, onProgress) {
     const vanillaVersionJson = path.join(vanillaVersionDir, `${baseVersion}.json`);
     const vanillaVersionJar = path.join(vanillaVersionDir, `${baseVersion}.jar`);
     
-    // Already fully downloaded
+    // Check if already downloaded
     if (fs.existsSync(vanillaVersionJson) && fs.existsSync(vanillaVersionJar)) {
-        return;
-    }
-
-    // JSON already seeded — Fabric installer will download the JAR with -downloadMinecraft
-    if (fs.existsSync(vanillaVersionJson)) {
-        console.log(`Vanilla ${baseVersion} JSON found, skipping manifest fetch`);
         return;
     }
     
     console.log(`Pre-downloading vanilla Minecraft ${baseVersion} for Fabric installer...`);
     if (onProgress) onProgress(`Setting up vanilla Minecraft ${baseVersion}...`, 20);
     
-    // Download version manifest from the proper Mojang API
-    const manifestResponse = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest.json');
+    // Download version manifest
+    const manifestResponse = await fetch('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
     if (!manifestResponse.ok) throw new Error('Failed to fetch version manifest');
     const manifest = await manifestResponse.json();
     

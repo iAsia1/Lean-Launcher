@@ -21,8 +21,7 @@ jobs:
       - name: Remove large folders not needed for build
         shell: bash
         run: |
-          rm -rf dist
-          rm -rf minecraft/assets/objects
+          rm -rf mod-profiles
           rm -rf minecraft/libraries
           rm -rf minecraft/natives
           rm -rf minecraft/logs
@@ -33,6 +32,8 @@ jobs:
           rm -rf minecraft/config
           rm -rf minecraft/mods
           rm -rf minecraft/resourcepacks
+          rm -rf minecraft/assets/objects
+          rm -rf dist
           rm -f forge-*.jar forge-*.log
 
       - run: npm install
