@@ -412,26 +412,12 @@ async function downloadFile(url, destinationPath, onProgress) {
         const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
         await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
         
-        const writer = fs.createWriteStream(destinationPath);
-        let downloadedBytes = 0;
-        
-        if (response.body) {
-            response.body.on('data', (chunk) => {
-                downloadedBytes += chunk.length;
-                if (onProgress && contentLength > 0) {
-                    const percent = Math.round((downloadedBytes / contentLength) * 100);
-                    onProgress(`Downloading... ${percent}%`);
-                }
-            });
-            await new Promise((resolve, reject) => {
-                response.body.pipe(writer);
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-                response.body.on('error', reject);
-            });
-        } else {
-            const data = Buffer.from(await response.arrayBuffer());
-            await fs.promises.writeFile(destinationPath, data);
+        // Use arrayBuffer which works with both Node.js fetch and web fetch
+        const arrayBuffer = await response.arrayBuffer();
+        const data = Buffer.from(arrayBuffer);
+        await fs.promises.writeFile(destinationPath, data);
+        if (onProgress && contentLength > 0) {
+            onProgress(`Downloaded ${(data.length / 1024 / 1024).toFixed(1)} MB`);
         }
         
         return destinationPath;
