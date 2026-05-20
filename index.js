@@ -432,9 +432,26 @@ async function downloadFile(url, destinationPath, onProgress) {
         } else {
             const data = Buffer.from(await response.arrayBuffer());
             await fs.promises.writeFile(destinationPath, data);
+            downloadedBytes = data.length;
+        }
+
+        // Verify download is complete (if server sent content-length, check it matches)
+        if (contentLength > 0 && downloadedBytes < contentLength) {
+            try { fs.unlinkSync(destinationPath); } catch {}
+            throw new Error(`Download incomplete: got ${downloadedBytes} of ${contentLength} bytes for ${url}`);
+        }
+
+        // Sanity check: downloaded file should be at least 1 byte
+        if (downloadedBytes === 0) {
+            try { fs.unlinkSync(destinationPath); } catch {}
+            throw new Error(`Download produced an empty file: ${url}`);
         }
         
         return destinationPath;
+    } catch (err) {
+        // Clean up any partial file on failure
+        try { fs.unlinkSync(destinationPath); } catch {}
+        throw err;
     } finally {
         clearTimeout(timeoutId);
     }
@@ -718,10 +735,31 @@ async function ensureFabricInstalled(baseVersion, instanceSettings, mcRoot, sele
 
     if (!fs.existsSync(profileJson) || !fs.existsSync(profileJar)) {
         if (onProgress) onProgress(`Installing Fabric ${installInfo.loaderVersion}...`, 25);
-        if (!fs.existsSync(installInfo.installerJarPath)) {
+
+        // Validate cached installer JAR — re-download if missing, empty, or suspiciously small
+        let needsDownload = true;
+        if (fs.existsSync(installInfo.installerJarPath)) {
+            try {
+                const stat = fs.statSync(installInfo.installerJarPath);
+                if (stat.size > 50000) { // valid Fabric installer is > 50KB
+                    needsDownload = false;
+                } else {
+                    console.warn(`Cached Fabric installer is too small (${stat.size} bytes), re-downloading...`);
+                    fs.unlinkSync(installInfo.installerJarPath);
+                }
+            } catch {
+                try { fs.unlinkSync(installInfo.installerJarPath); } catch {}
+            }
+        }
+
+        if (needsDownload) {
             await downloadFile(installInfo.installerUrl, installInfo.installerJarPath, (msg) => {
                 if (onProgress) onProgress(msg, 26);
             });
+            // Verify download succeeded
+            if (!fs.existsSync(installInfo.installerJarPath) || fs.statSync(installInfo.installerJarPath).size < 50000) {
+                throw new Error(`Fabric installer download failed or is corrupt. Please check your internet connection and try again.`);
+            }
         }
 
         const javaExecutable = resolveJavaExecutable(instanceSettings);
