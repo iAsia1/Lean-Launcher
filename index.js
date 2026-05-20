@@ -62,12 +62,7 @@ if (IS_PACKAGED) {
             for (const entry of fs.readdirSync(src)) {
                 const srcPath = path.join(src, entry);
                 const destPath = path.join(dest, entry);
-                const stat = fs.statSync(srcPath);
-                if (stat.isDirectory()) {
-                    fs.cpSync(srcPath, destPath, { recursive: true });
-                } else {
-                    fs.copyFileSync(srcPath, destPath);
-                }
+                if (fs.statSync(srcPath).isFile()) fs.copyFileSync(srcPath, destPath);
             }
         }
     }
@@ -447,6 +442,7 @@ async function downloadFile(url, destinationPath, onProgress) {
 
 async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
     return new Promise((resolve, reject) => {
+        let recentStdErr = '';
         const child = require('child_process').execFile(
             javaExecutable,
             ['-jar', jarPath, ...args],
@@ -469,6 +465,10 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         child.stderr?.on('data', (data) => {
             const output = data.toString();
             console.log(`[Installer Error] ${output}`);
+            recentStdErr += output;
+            if (recentStdErr.length > 4000) {
+                recentStdErr = recentStdErr.slice(-4000);
+            }
         });
         
         child.on('error', (error) => {
@@ -479,7 +479,12 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         child.on('close', (code) => {
             clearInterval(updateInterval);
             if (code !== 0) {
-                reject(new Error(`Installer exited with code ${code}`));
+                const detail = recentStdErr.trim();
+                if (detail) {
+                    reject(new Error(`Installer exited with code ${code}. ${detail}`));
+                } else {
+                    reject(new Error(`Installer exited with code ${code}`));
+                }
             } else {
                 resolve();
             }
@@ -494,19 +499,38 @@ function resolveJavaExecutable(instanceSettings) {
 
 async function ensureLauncherProfiles(mcRoot) {
     const profilesPath = path.join(mcRoot, 'launcher_profiles.json');
-    if (fs.existsSync(profilesPath)) return;
-    
-    const profiles = {
-        profiles: {},
+    const defaultProfiles = {
+        profiles: {
+            "Lean Launcher": {
+                name: "Lean Launcher",
+                type: "custom",
+                lastVersionId: "latest-release"
+            }
+        },
         settings: {
             crashAssistance: true,
             launcherVisibility: "launcher"
         },
         version: 3
     };
-    
-    await fs.promises.writeFile(profilesPath, JSON.stringify(profiles, null, 2), 'utf-8');
-    console.log(`Created launcher_profiles.json at ${profilesPath}`);
+
+    let needsWrite = true;
+    if (fs.existsSync(profilesPath)) {
+        try {
+            const parsed = JSON.parse(await fs.promises.readFile(profilesPath, 'utf-8'));
+            const existingProfiles = parsed && typeof parsed.profiles === 'object' ? parsed.profiles : null;
+            if (existingProfiles && Object.keys(existingProfiles).length > 0) {
+                needsWrite = false;
+            }
+        } catch {
+            // Invalid JSON should be replaced so installers can proceed.
+        }
+    }
+
+    if (needsWrite) {
+        await fs.promises.writeFile(profilesPath, JSON.stringify(defaultProfiles, null, 2), 'utf-8');
+        console.log(`Created launcher_profiles.json at ${profilesPath}`);
+    }
 }
 
 async function resolveFabricInstall(baseVersion, instanceSettings) {

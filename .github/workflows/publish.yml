@@ -22,17 +22,7 @@ jobs:
         shell: bash
         run: |
           rm -rf mod-profiles
-          rm -rf minecraft/libraries
-          rm -rf minecraft/natives
-          rm -rf minecraft/logs
-          rm -rf minecraft/cache
-          rm -rf minecraft/saves
-          rm -rf minecraft/instances
-          rm -rf minecraft/forge
-          rm -rf minecraft/config
-          rm -rf minecraft/mods
-          rm -rf minecraft/resourcepacks
-          rm -rf minecraft/assets/objects
+          rm -rf minecraft
           rm -rf dist
           rm -f forge-*.jar forge-*.log
 
