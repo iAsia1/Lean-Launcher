@@ -534,16 +534,22 @@ async function ensureVanillaVersionExists(baseVersion, mcRoot, onProgress) {
     const vanillaVersionJson = path.join(vanillaVersionDir, `${baseVersion}.json`);
     const vanillaVersionJar = path.join(vanillaVersionDir, `${baseVersion}.jar`);
     
-    // Check if already downloaded
+    // Already fully downloaded
     if (fs.existsSync(vanillaVersionJson) && fs.existsSync(vanillaVersionJar)) {
+        return;
+    }
+
+    // JSON already seeded — Fabric installer will download the JAR with -downloadMinecraft
+    if (fs.existsSync(vanillaVersionJson)) {
+        console.log(`Vanilla ${baseVersion} JSON found, skipping manifest fetch`);
         return;
     }
     
     console.log(`Pre-downloading vanilla Minecraft ${baseVersion} for Fabric installer...`);
     if (onProgress) onProgress(`Setting up vanilla Minecraft ${baseVersion}...`, 20);
     
-    // Download version manifest
-    const manifestResponse = await fetch('https://launcher.mojang.com/v1/objects/6ef92f2b7255bc3cb128ed320e2140a95a3ba3d7/version_manifest.json');
+    // Download version manifest from the proper Mojang API
+    const manifestResponse = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest.json');
     if (!manifestResponse.ok) throw new Error('Failed to fetch version manifest');
     const manifest = await manifestResponse.json();
     
