@@ -21,12 +21,26 @@ jobs:
       - name: Remove large folders not needed for build
         shell: bash
         run: |
-          rm -rf mod-profiles
-          rm -rf minecraft
+          # Only delete large/heavy subdirectories — keep versions/, assets/indexes/, launcher_profiles.json, log4j configs
+          rm -rf minecraft/assets/objects
+          rm -rf minecraft/libraries
+          rm -rf minecraft/natives
+          rm -rf minecraft/logs
+          rm -rf minecraft/cache
+          rm -rf minecraft/saves
+          rm -rf minecraft/instances
+          rm -rf minecraft/forge
+          rm -rf minecraft/config
+          rm -rf minecraft/mods
+          rm -rf minecraft/resourcepacks
           rm -rf dist
           rm -f forge-*.jar forge-*.log
 
       - run: npm install
+
+      - name: Bundle Java Runtime (Eclipse Temurin 21 JRE)
+        shell: bash
+        run: node scripts/bundle-java.js
 
       - name: Build and publish to GitHub Releases
         run: npx electron-builder --publish=always

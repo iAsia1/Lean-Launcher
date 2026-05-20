@@ -494,6 +494,20 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
 
 function resolveJavaExecutable(instanceSettings) {
     if (instanceSettings?.javaPath && fs.existsSync(instanceSettings.javaPath)) return instanceSettings.javaPath;
+
+    // When packaged, try the bundled JRE first (placed in extraResources by electron-builder)
+    if (IS_PACKAGED) {
+        const electronApp = (() => { try { return require('electron').app; } catch { return null; } })();
+        const resourcesPath = electronApp ? process.resourcesPath : path.join(__dirname, '..');
+        const javaBin = process.platform === 'win32' ? 'java.exe' : 'java';
+        const bundledJava = path.join(resourcesPath, 'jre', 'bin', javaBin);
+        if (fs.existsSync(bundledJava)) {
+            console.log(`Using bundled Java: ${bundledJava}`);
+            return bundledJava;
+        }
+        console.warn(`Bundled JRE not found at ${bundledJava}, falling back to system Java.`);
+    }
+
     return process.platform === 'win32' ? 'java.exe' : 'java';
 }
 
@@ -601,6 +615,97 @@ async function ensureVanillaVersionExists(baseVersion, mcRoot, onProgress) {
     }
 }
 
+// --- Version JSON & Asset Index Download Resilience ---
+// These ensure critical metadata files exist even if they weren't bundled in the packaged app.
+
+const MOJANG_VERSION_MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
+let _versionManifestCache = null;
+let _versionManifestCacheTime = 0;
+const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchVersionManifest() {
+    const now = Date.now();
+    if (_versionManifestCache && (now - _versionManifestCacheTime) < MANIFEST_CACHE_TTL_MS) {
+        return _versionManifestCache;
+    }
+    const response = await fetch(MOJANG_VERSION_MANIFEST);
+    if (!response.ok) throw new Error(`Failed to fetch version manifest (HTTP ${response.status}). Check your internet connection.`);
+    _versionManifestCache = await response.json();
+    _versionManifestCacheTime = now;
+    return _versionManifestCache;
+}
+
+/**
+ * Ensures the version JSON file exists at <mcRoot>/versions/<versionId>/<versionId>.json.
+ * If missing, downloads it from Mojang's servers.
+ */
+async function ensureVersionJson(versionId, mcRoot, onProgress) {
+    const versionDir = path.join(mcRoot, 'versions', versionId);
+    const versionJsonPath = path.join(versionDir, `${versionId}.json`);
+
+    if (fs.existsSync(versionJsonPath)) return;
+
+    console.log(`Version JSON missing for ${versionId}, downloading...`);
+    if (onProgress) onProgress(`Downloading version data for ${versionId}...`, 15);
+
+    const manifest = await fetchVersionManifest();
+    const versionEntry = manifest.versions.find(v => v.id === versionId);
+    if (!versionEntry) throw new Error(`Minecraft version "${versionId}" not found in Mojang's version list. It may have been removed or the version name is incorrect.`);
+
+    const versionResponse = await fetch(versionEntry.url);
+    if (!versionResponse.ok) throw new Error(`Failed to download version data for ${versionId} (HTTP ${versionResponse.status}). Check your internet connection.`);
+
+    const versionJson = await versionResponse.json();
+    await fs.promises.mkdir(versionDir, { recursive: true });
+    await fs.promises.writeFile(versionJsonPath, JSON.stringify(versionJson, null, 2), 'utf-8');
+    console.log(`Downloaded version JSON to ${versionJsonPath}`);
+    if (onProgress) onProgress(`Version data for ${versionId} ready.`, 18);
+}
+
+/**
+ * Ensures the asset index JSON exists at <mcRoot>/assets/indexes/<assetIndexId>.json.
+ * Reads the version JSON to discover which asset index is needed, then downloads if missing.
+ */
+async function ensureAssetIndex(versionId, mcRoot, onProgress) {
+    const versionJsonPath = path.join(mcRoot, 'versions', versionId, `${versionId}.json`);
+    if (!fs.existsSync(versionJsonPath)) {
+        // Version JSON must exist first — ensureVersionJson should have been called
+        console.warn(`Cannot check asset index: version JSON missing for ${versionId}`);
+        return;
+    }
+
+    let versionJson;
+    try {
+        versionJson = JSON.parse(await fs.promises.readFile(versionJsonPath, 'utf-8'));
+    } catch {
+        console.warn(`Cannot parse version JSON for ${versionId}, skipping asset index check.`);
+        return;
+    }
+
+    const assetIndexInfo = versionJson.assetIndex;
+    if (!assetIndexInfo?.id) return; // Some ancient versions may lack an asset index
+
+    const assetIndexPath = path.join(mcRoot, 'assets', 'indexes', `${assetIndexInfo.id}.json`);
+    if (fs.existsSync(assetIndexPath)) return;
+
+    console.log(`Asset index missing for ${assetIndexInfo.id}, downloading...`);
+    if (onProgress) onProgress(`Downloading asset index for ${assetIndexInfo.id}...`, 17);
+
+    if (!assetIndexInfo.url) {
+        console.warn(`Asset index "${assetIndexInfo.id}" has no download URL, skipping.`);
+        return;
+    }
+
+    const response = await fetch(assetIndexInfo.url);
+    if (!response.ok) throw new Error(`Failed to download asset index ${assetIndexInfo.id} (HTTP ${response.status}). Check your internet connection.`);
+
+    const assetIndexJson = await response.json();
+    await fs.promises.mkdir(path.dirname(assetIndexPath), { recursive: true });
+    await fs.promises.writeFile(assetIndexPath, JSON.stringify(assetIndexJson, null, 2), 'utf-8');
+    console.log(`Downloaded asset index to ${assetIndexPath}`);
+    if (onProgress) onProgress(`Asset index ready.`, 19);
+}
+
 async function ensureFabricInstalled(baseVersion, instanceSettings, mcRoot, selectedVersion, onProgress) {
     // First ensure vanilla Minecraft is available
     if (onProgress) onProgress(`Preparing vanilla Minecraft...`, 20);
@@ -620,7 +725,20 @@ async function ensureFabricInstalled(baseVersion, instanceSettings, mcRoot, sele
         }
 
         const javaExecutable = resolveJavaExecutable(instanceSettings);
-        console.log(`Running Fabric installer: ${installInfo.installerJarPath}`);
+        console.log(`Running Fabric installer with Java: ${javaExecutable}`);
+        console.log(`Fabric installer JAR: ${installInfo.installerJarPath}`);
+
+        // Check if java is actually runnable
+        try {
+            await execFileAsync(javaExecutable, ['-version'], { timeout: 15000 });
+        } catch (javaErr) {
+            throw new Error(
+                `Java is not available. The Fabric installer requires Java to set up Minecraft. ` +
+                `Please install Java 17 or newer, or set a custom Java path in Instance Settings.\n` +
+                `Checked: ${javaExecutable}\n` +
+                `Error: ${javaErr.message}`
+            );
+        }
         
         // Ensure launcher_profiles.json exists for Fabric installer
         await ensureLauncherProfiles(mcRoot);
@@ -637,7 +755,7 @@ async function ensureFabricInstalled(baseVersion, instanceSettings, mcRoot, sele
             ], onProgress);
         } catch (error) {
             console.error(`Fabric installer failed: ${error.message}`);
-            throw error;
+            throw new Error(`Fabric installer failed for Minecraft ${baseVersion}. ${error.message}`);
         }
     }
 
@@ -740,6 +858,15 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     const gameRoot = path.join(MC_ROOT, "instances", selectedVersion);
     const mcRoot = MC_ROOT;
     if (!fs.existsSync(gameRoot)) fs.mkdirSync(gameRoot, { recursive: true });
+
+    // Ensure critical version metadata exists (downloads if missing from bundled build)
+    try {
+        if (onProgress) onProgress("Checking version files...", 12);
+        await ensureVersionJson(launchVersion, mcRoot, onProgress);
+        await ensureAssetIndex(launchVersion, mcRoot, onProgress);
+    } catch (err) {
+        throw new Error(`Failed to prepare Minecraft ${launchVersion}: ${err.message}`);
+    }
 
     let opts = {
         clientPackage: null, authorization, root: mcRoot,
