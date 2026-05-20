@@ -859,6 +859,37 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     const mcRoot = MC_ROOT;
     if (!fs.existsSync(gameRoot)) fs.mkdirSync(gameRoot, { recursive: true });
 
+    // Validate that launchVersion looks like a real Minecraft version
+    if (!OFFICIAL_LEAN_BASE_VERSIONS.has(selectedVersion) && !explicitType) {
+        // Custom instance — ensure baseVersion is a plausible Minecraft version string
+        if (!launchVersion || !/^\d+\.\d+(?:\.\d+)?$/.test(launchVersion)) {
+            throw new Error(
+                `Cannot launch "${selectedVersion}": the base Minecraft version is missing or invalid.\n` +
+                `Current base version: "${launchVersion || '(not set)'}"\n` +
+                `Please edit this instance and set a valid Minecraft version (e.g., "1.21.4").`
+            );
+        }
+    }
+
+    // Resolve Java path upfront (before any installer runs) for diagnostics
+    const resolvedJavaPath = resolveJavaExecutable(instanceSettings);
+    let detectedJavaVersion = null;
+    try {
+        const { execSync } = require('child_process');
+        detectedJavaVersion = execSync(`"${resolvedJavaPath}" -version 2>&1`, { encoding: 'utf-8', timeout: 15000 }).trim();
+        console.log(`Java version detected:\n${detectedJavaVersion}`);
+    } catch (javaErr) {
+        console.warn(`Could not detect Java version: ${javaErr.message}`);
+        detectedJavaVersion = `(not detected: ${javaErr.message})`;
+    }
+
+    // Store launcher debug output for crash diagnostics
+    const launcherDebugLines = [];
+    const recordDebug = (msg) => {
+        launcherDebugLines.push(`[${new Date().toISOString()}] ${msg}`);
+        if (launcherDebugLines.length > 80) launcherDebugLines.shift();
+    };
+
     // Ensure critical version metadata exists (downloads if missing from bundled build)
     try {
         if (onProgress) onProgress("Checking version files...", 12);
@@ -908,6 +939,18 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
         const crashReportsDir = path.join(gameRoot, 'crash-reports');
         const latestCrash = getMostRecentCrashReport(crashReportsDir);
 
+        // Also check minecraft-launcher-core's own log files
+        const launcherLogPaths = [
+            path.join(mcRoot, 'launcher_cef_log.txt'),
+            path.join(mcRoot, 'launcher_log.txt'),
+            path.join(gameRoot, 'launcher_log.txt')
+        ];
+        let launcherCoreLogTail = null;
+        for (const logPath of launcherLogPaths) {
+            const tail = readTailLines(logPath, 80);
+            if (tail) { launcherCoreLogTail = tail; break; }
+        }
+
         // Parse latest.log for diagnostics
         let systemMemoryLogLine = null;
         let javaVersionLogLine = null;
@@ -942,11 +985,13 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
         return {
             timestamp: new Date().toISOString(),
             version: selectedVersion,
+            launchVersion: launchVersion || null,
             profile: launchProfile || null,
             allocatedRamMb: instanceSettings?.ram || '4096',
             jvmPreset: instanceSettings?.preset || 'default',
             jvmArgs: instanceSettings?.jvmArgs || null,
-            javaPath: instanceSettings?.javaPath || null,
+            javaPath: resolvedJavaPath || instanceSettings?.javaPath || null,
+            javaVersion: detectedJavaVersion || null,
             customType: effectiveCustomType || null,
             message: baseMessage,
             code: typeof code === 'number' ? code : null,
@@ -957,7 +1002,9 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
             errorSummary,
             latestLogTail: readTailLines(latestLogPath, 120),
             crashReportFile: latestCrash?.name || null,
-            crashReportPreview: latestCrash ? readTailLines(latestCrash.fullPath, 120) : null
+            crashReportPreview: latestCrash ? readTailLines(latestCrash.fullPath, 120) : null,
+            launcherDebugLog: launcherDebugLines.length ? launcherDebugLines.join('\n') : null,
+            launcherCoreLogTail: launcherCoreLogTail || null
         };
     }
 
@@ -1015,6 +1062,7 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
 
     launcher.on('debug', (e) => {
         console.log(`[DEBUG] ${e}`);
+        recordDebug(`[DEBUG] ${e}`);
         if(e.includes('Starting native process')) {
             if (onProgress) onProgress("Launching Game...", 100);
             if (onLaunchEvent) onLaunchEvent({ type: 'booted', version: selectedVersion });
@@ -1024,6 +1072,7 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
     launcher.removeAllListeners('error');
     launcher.on('error', (error) => {
         clearInterval(cancelInterval);
+        recordDebug(`[ERROR] ${error?.message || error}`);
         emitCrashReport(error?.message || 'Minecraft crashed during launch.');
     });
     
@@ -1043,9 +1092,14 @@ async function startLeanClient(options, onProgress, onLaunchEvent) {
         const numericCode = typeof code === 'number' ? code : null;
         const abnormalExit = numericCode !== null ? numericCode !== 0 : Boolean(signal);
         if (abnormalExit) {
-            const exitMessage = numericCode !== null
-                ? `Minecraft exited unexpectedly with code ${numericCode}.`
-                : `Minecraft exited unexpectedly${signal ? ` (${signal})` : ''}.`;
+            let exitMessage;
+            if (numericCode === 1) {
+                exitMessage = `Minecraft exited with code 1 (JVM/startup failure).`;
+            } else if (numericCode !== null) {
+                exitMessage = `Minecraft exited unexpectedly with code ${numericCode}.`;
+            } else {
+                exitMessage = `Minecraft exited unexpectedly${signal ? ` (${signal})` : ''}.`;
+            }
             emitCrashReport(exitMessage, numericCode, signal || null);
         }
 

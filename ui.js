@@ -185,7 +185,8 @@ function formatCrashReport(report) {
     sections.push('  CRASH SUMMARY');
     sections.push('═══════════════════════════════════');
     sections.push(`  Time     : ${when}`);
-    if (report.version) sections.push(`  Version  : ${report.version}`);
+    if (report.version) sections.push(`  Instance : ${report.version}`);
+    if (report.launchVersion && report.launchVersion !== report.version) sections.push(`  MC Ver   : ${report.launchVersion}`);
     if (report.profile) sections.push(`  Profile  : ${report.profile}`);
     if (typeof report.code === 'number' || report.signal) {
         sections.push(`  Exit     : code=${report.code ?? '?'}  signal=${report.signal || 'none'}`);
@@ -193,7 +194,7 @@ function formatCrashReport(report) {
     if (report.message) sections.push(`  Note     : ${report.message}`);
 
     // Configuration
-    const hasConfig = report.allocatedRamMb || report.jvmPreset || report.customType || report.javaVersionLogLine;
+    const hasConfig = report.allocatedRamMb || report.jvmPreset || report.customType || report.javaVersionLogLine || report.javaVersion || report.javaPath;
     if (hasConfig) {
         sections.push('');
         sections.push('── Configuration ──');
@@ -201,6 +202,7 @@ function formatCrashReport(report) {
         if (report.jvmPreset) sections.push(`  JVM Preset: ${report.jvmPreset}`);
         if (report.jvmArgs) sections.push(`  JVM Args  : ${report.jvmArgs}`);
         if (report.javaPath) sections.push(`  Java Path : ${report.javaPath}`);
+        if (report.javaVersion) sections.push(`  Java Ver  : ${report.javaVersion.split('\n')[0] || report.javaVersion}`);
         if (report.javaVersionLogLine) sections.push(`  Java Info : ${report.javaVersionLogLine}`);
         if (report.systemMemoryLogLine) sections.push(`  Sys Mem   : ${report.systemMemoryLogLine}`);
     }
@@ -230,9 +232,30 @@ function formatCrashReport(report) {
             suggestions.push('• A mod or loader failed to initialize. Check the crash report file for the root cause.');
         }
     }
-    if (report.code === 1 || report.signal) {
-        suggestions.push('• The process was terminated unexpectedly. Check for antivirus interference or low system resources.');
+    if (report.code === 1) {
+        suggestions.push('• Exit code 1 usually means the Java Virtual Machine failed to start.');
+        if (report.javaVersion) {
+            const javaVerMatch = report.javaVersion.match(/version "(\d+)/);
+            if (javaVerMatch) {
+                const major = parseInt(javaVerMatch[1], 10);
+                if (report.launchVersion) {
+                    const mcVerParts = report.launchVersion.split('.');
+                    const mcMinor = parseInt(mcVerParts[1], 10);
+                    if (mcMinor >= 21 && major < 21) suggestions.push(`• Your Java is version ${major}, but Minecraft ${report.launchVersion} requires Java 21 or newer. Install Java 21+.`);
+                    else if (mcMinor >= 19 && major < 17) suggestions.push(`• Your Java is version ${major}, but Minecraft ${report.launchVersion} requires Java 17 or newer. Install Java 17+.`);
+                    else if (major < 17) suggestions.push(`• Your Java is version ${major}, which is too old for modern Minecraft. Install Java 21 (Eclipse Temurin recommended).`);
+                }
+                if (major < 17) suggestions.push('• Download Java 21 from: https://adoptium.net/download/');
+            }
+        } else {
+            suggestions.push('• Java may not be installed or not on your system PATH. Install Java 21 (Eclipse Temurin).');
+            suggestions.push('• Download from: https://adoptium.net/download/');
+        }
+        suggestions.push('• Check that no antivirus or firewall is blocking the Java process.');
+    }
+    if (report.signal) {
         if (report.signal === 'SIGKILL') suggestions.push('• SIGKILL often means an out-of-memory killer or forced termination.');
+        else suggestions.push('• The process was terminated by signal: ' + report.signal);
     }
     if (!suggestions.length) {
         suggestions.push('• Check the crash report file below for specific mod or game errors.');
@@ -241,6 +264,22 @@ function formatCrashReport(report) {
     sections.push('');
     sections.push('── Suggestions ──');
     sections.push(suggestions.join('\n'));
+
+    if (report.launcherDebugLog) {
+        sections.push('');
+        sections.push('───────────────────────────────────');
+        sections.push('  LAUNCHER DEBUG LOG');
+        sections.push('───────────────────────────────────');
+        sections.push(report.launcherDebugLog);
+    }
+
+    if (report.launcherCoreLogTail) {
+        sections.push('');
+        sections.push('───────────────────────────────────');
+        sections.push('  LAUNCHER ENGINE LOG');
+        sections.push('───────────────────────────────────');
+        sections.push(report.launcherCoreLogTail);
+    }
 
     if (report.crashReportPreview) {
         sections.push('');
