@@ -214,6 +214,18 @@ async function main() {
       fs.chmodSync(javaPath, 0o755);
     }
 
+    // On macOS, strip pre-existing code signatures from the JRE so electron-builder can re-sign cleanly
+    if (args.platform === 'darwin') {
+      console.log('  Stripping pre-existing code signatures from JRE (macOS)...');
+      try {
+        execSync(`find "${JRE_DIR}" -type f \\( -perm +111 -o -name "*.dylib" -o -name "*.jnilib" \\) -exec codesign --remove-signature {} \\; 2>/dev/null || true`, { stdio: 'pipe' });
+        execSync(`codesign --remove-signature "${JRE_DIR}" 2>/dev/null || true`, { stdio: 'pipe' });
+        console.log('  Code signatures stripped.');
+      } catch (stripErr) {
+        console.warn(`  Could not strip some signatures (non-fatal): ${stripErr.message}`);
+      }
+    }
+
     console.log(`\n✓ JRE bundled successfully at ${javaPath}`);
     console.log('');
 
