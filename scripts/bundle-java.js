@@ -131,6 +131,16 @@ async function main() {
 
   console.log(`\n=== Bundling JRE for ${os}-${arch} ===`);
 
+  // macOS: skip JRE bundling. Adoptium's macOS JRE uses a bundle structure
+  // incompatible with electron-builder codesigning ("unsealed contents" error).
+  // macOS users can install Java 21 via: brew install openjdk@21
+  if (args.platform === 'darwin') {
+    console.log('macOS detected — skipping JRE bundle.');
+    console.log('macOS users should install Java 21: brew install openjdk@21');
+    console.log('The launcher will fall back to system Java automatically.\n');
+    return;
+  }
+
   // Check if already bundled
   const javaBin = args.platform === 'win32' ? 'java.exe' : 'java';
   const javaPath = path.join(JRE_DIR, 'bin', javaBin);
