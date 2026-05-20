@@ -85,7 +85,7 @@ app.whenReady().then(() => {
 // Notify renderer of update download progress
 autoUpdater.on('download-progress', (progress) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-progress', progress.percent);
+    safeSend(mainWindow.webContents, 'update-progress', progress.percent);
   }
 });
 
@@ -105,6 +105,12 @@ autoUpdater.on('update-downloaded', () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
+function safeSend(webContents, channel, ...args) {
+  try {
+    if (webContents && !webContents.isDestroyed()) webContents.send(channel, ...args);
+  } catch {}
+}
+
 ipcMain.handle('login-account', async () => {
   try { return { success: true, result: await loginAccount() }; }
   catch (error) { return { success: false, error: error?.message || String(error) }; }
@@ -117,7 +123,7 @@ ipcMain.handle('launch-game', async (event, payload) => {
 
   try { 
     const result = await startLeanClient(payload, (msg, prog) => {
-          event.sender.send('launch-update', { msg, prog });
+          safeSend(event.sender, 'launch-update', { msg, prog });
       }, (launchEvent) => {
           if (!launchEvent || typeof launchEvent !== 'object') return;
 
@@ -133,7 +139,7 @@ ipcMain.handle('launch-game', async (event, payload) => {
 
           if (launchEvent.type === 'crash') {
             const visibleWindow = showOrCreateMainWindow();
-            visibleWindow.webContents.send('launch-crash-report', launchEvent.report || {});
+            safeSend(visibleWindow.webContents, 'launch-crash-report', launchEvent.report || {});
           }
       });
       return { success: true, result }; 

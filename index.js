@@ -428,17 +428,18 @@ async function downloadFile(url, destinationPath, onProgress) {
 
 async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
     return new Promise((resolve, reject) => {
+        let stderr = '';
         const child = require('child_process').execFile(
             javaExecutable,
             ['-jar', jarPath, ...args],
-            { maxBuffer: 1024 * 1024 * 50, timeout: 600000 } // 10 minute timeout
+            { maxBuffer: 1024 * 1024 * 50, timeout: 600000 }
         );
         
         let lastUpdate = Date.now();
         const updateInterval = setInterval(() => {
             const elapsed = Math.floor((Date.now() - lastUpdate) / 1000);
             if (onProgress) onProgress(`Installing... (${elapsed}s elapsed)`);
-        }, 3000); // Update progress every 3 seconds
+        }, 3000);
         
         child.stdout?.on('data', (data) => {
             const output = data.toString();
@@ -449,6 +450,7 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         
         child.stderr?.on('data', (data) => {
             const output = data.toString();
+            stderr += output;
             console.log(`[Installer Error] ${output}`);
         });
         
@@ -460,7 +462,8 @@ async function runJavaJar(javaExecutable, jarPath, args, onProgress) {
         child.on('close', (code) => {
             clearInterval(updateInterval);
             if (code !== 0) {
-                reject(new Error(`Installer exited with code ${code}`));
+                const tail = stderr.slice(-500);
+                reject(new Error(`Installer exited with code ${code}${tail ? '. Stderr: ' + tail : ''}`));
             } else {
                 resolve();
             }
